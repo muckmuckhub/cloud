@@ -96,6 +96,12 @@ docs plugin means adding it there.
 internal link resolves, so you do not need Python to catch a broken link. Add
 new pages to `nav:` in `mkdocs.yml` or the check fails.
 
+Publishing is GitHub Pages, which has to be switched on once per repository:
+**Settings → Pages → Build and deployment → Source: "GitHub Actions"**. Until
+that is set, the docs workflow builds and verifies the site but skips the
+deploy with a warning rather than failing — so a fork that does not want a docs
+site is not permanently red.
+
 `links` needs the network, so it is not part of the PR gate — CI runs it
 weekly. If it goes red, a preset needs its pinned version bumped; each preset's
 comment names the upstream API that lists the current one.

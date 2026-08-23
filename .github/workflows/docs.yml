@@ -2,9 +2,14 @@ name: Docs
 
 # Builds the docs site and publishes it to GitHub Pages.
 #
-# Enable it once in the repository: Settings -> Pages -> Source: GitHub Actions.
-# Until then this workflow builds on pull requests and only the deploy step is
-# skipped, so a broken docs change still fails CI.
+# Enable it once in the repository, or nothing is published:
+#
+#   Settings -> Pages -> Build and deployment -> Source: "GitHub Actions"
+#
+# https://github.com/muckmuckhub/cloud/settings/pages
+#
+# Until that is done the build still runs and the deploy step is skipped with a
+# warning, so a broken docs change fails CI while an unconfigured fork does not.
 
 on:
   push:
@@ -59,5 +64,27 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # deploy-pages fails with a bare 404 and an octokit stack trace when
+      # Pages has never been enabled, which reads like a broken workflow rather
+      # than an unticked setting. Ask the API first and say what to click.
+      #
+      # Only a 404 means "not enabled". Anything else — a permissions quirk, a
+      # transient API error — falls through to the deploy, so this check can
+      # never silently stop publishing.
+      - name: Is Pages enabled?
+        id: pages
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pages")
+          if [ "$code" = "404" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=GitHub Pages is not enabled::The site built fine but was not published. Enable it once at https://github.com/${{ github.repository }}/settings/pages - under 'Build and deployment' set Source to 'GitHub Actions' - then re-run this job."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - id: deployment
+        if: steps.pages.outputs.enabled == 'true'
         uses: actions/deploy-pages@v4
