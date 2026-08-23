@@ -116,15 +116,37 @@ them.
 
 ## Releasing
 
-Push a `v*` tag. CI then:
+1. Bump the version in three places — `packages/cli/src/index.ts`,
+   `packages/cli/package.json`, `packages/schema/package.json` — and commit.
+2. Tag and push:
 
-1. runs the full check and the invariants, on Linux and Windows;
-2. compiles a binary for linux-x64, linux-arm64, darwin-arm64 and windows-x64,
+   ```sh
+   git tag -a v0.2.0 -m "v0.2.0"
+   git push origin v0.2.0
+   ```
+
+CI refuses to publish if those three do not match the tag, before anything is
+compiled, so a forgotten bump costs a re-tag rather than a release whose
+`cloud --version` lies. To fix one:
+
+```sh
+git tag -d v0.2.0 && git push origin :refs/tags/v0.2.0   # drop it
+# bump, commit, then tag again
+```
+
+Pushing the tag then makes CI:
+
+1. run the full check and the invariants, on Linux and Windows;
+2. verify the version matches the tag;
+3. compile a binary for linux-x64, linux-arm64, darwin-arm64 and windows-x64,
    each with a SHA-256 checksum and a build provenance attestation;
-3. publishes `install.sh` and `install.ps1` as release assets;
-4. attaches everything to the GitHub release.
+4. publish `install.sh` and `install.ps1` as release assets, with the tag
+   stamped in as their default version;
+5. create the GitHub release with generated notes and attach everything.
 
-Nothing else is needed — no domain, no gist, no separate hosting.
+The release is created by the workflow — there is nothing to click, and no
+domain, gist or separate hosting to maintain. Watch it in the Actions tab; if
+any job fails, no release is published.
 
 ## The installers
 
