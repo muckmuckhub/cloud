@@ -1,0 +1,17 @@
+{
+  "name": "cloud-cli",
+  "version": "0.1.0",
+  "description": "Run a Minecraft network from one config file. No dashboard, no daemon.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": { "cloud": "./src/index.ts" },
+  "dependencies": {
+    "@cloud/schema": "workspace:*",
+    "smol-toml": "^1.3.0",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.23.5"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^0.30.0"
+  }
+}

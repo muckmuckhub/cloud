@@ -1,0 +1,8 @@
+cloud
+Copyright 2026 The cloud contributors
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product bundles no third-party code. At runtime it orchestrates:
+  - itzg/minecraft-server and itzg/mc-proxy (Apache-2.0) — container images
+  - PaperMC and Velocity (MIT / GPL-3.0) — downloaded by those images

@@ -1,0 +1,32 @@
+# The only file a human edits. `cloud apply` renders docker-compose.yml,
+# velocity/velocity.toml and paper-patches/ from this, then reconciles.
+#
+# This is also the exact artifact the AI setup wizard emits — it fills these
+# fields via tool call, prints a diff, and waits for approval. Nothing
+# downstream knows or cares whether a human or a model wrote it.
+
+[network]
+name       = "example"
+entry_port = 25565
+motd       = "A Velocity Server"
+forwarding = "modern"          # modern | legacy | bungeeguard
+online     = true
+
+[proxy]
+software = "velocity"
+version  = "3.4.0-SNAPSHOT"   # not "latest": that is a 4.x snapshot needing Java 25
+memory   = "512m"
+
+[groups.lobby]
+software = "paper"
+version  = "1.21.10"
+memory   = "2G"
+min      = 1
+fallback = true                # players land here; failover target
+
+[groups.survival]
+software = "paper"
+version  = "1.21.10"
+memory   = "4G"
+min      = 1
+static   = true                # keeps its world across restarts

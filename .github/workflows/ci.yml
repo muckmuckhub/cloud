@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    # Weekly, for the link check below. Upstream projects move their downloads
+    # on their own clock, and a dead URL reaches users as a crash-looping
+    # server rather than as a download error.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      matrix:
+        # Windows is in the matrix because path joining, permissions and
+        # console encoding are exactly the things that silently regress.
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: latest }
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+
+  # Renders every example and asserts the invariants that matter, so a
+  # refactor cannot quietly publish a backend port. Runs on Windows too: this
+  # job compares checked-in artifacts byte for byte, which is exactly where a
+  # line-ending regression would show up.
+  invariants:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: latest }
+      - run: bun install --frozen-lockfile
+      - name: Render examples and check invariants
+        run: bun run scripts/check-invariants.ts
+        # Fails if examples/ is stale. Fix with `bun run examples`.
+      - name: Check the docs navigation and links
+        run: bun run scripts/check-docs.ts
+
+  # Not part of the PR gate: it needs the network and depends on servers we do
+  # not control. A red run here means a preset needs its pinned version bumped.
+  links:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: latest }
+      - run: bun install --frozen-lockfile
+      - run: bun run links
+
+  # The installers are release assets, so the script someone pipes into a shell
+  # is versioned alongside the binaries it downloads. A tagged installer then
+  # cannot try to install a different release's asset layout.
+  installers:
+    needs: [check, invariants]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stamp the release version into the installers
+        env:
+          TAG: ${{ github.ref_name }}
+        # The repository copies default to CLOUD_VERSION=latest, which is right
+        # for `releases/latest/download/install.sh`. A *pinned* URL must install
+        # the release it shipped with, or pinning the installer would pin
+        # nothing. The grep is not decoration: a sed that silently matches
+        # nothing would publish an installer that ignores its own tag.
+        run: |
+          mkdir -p out
+          sed "s|CLOUD_VERSION:-latest|CLOUD_VERSION:-${TAG}|" scripts/install.sh > out/install.sh
+          sed "s|else { \"latest\" }|else { \"${TAG}\" }|" scripts/install.ps1 > out/install.ps1
+          grep -q "CLOUD_VERSION:-${TAG}" out/install.sh
+          grep -q "else { \"${TAG}\" }" out/install.ps1
+          chmod +x out/install.sh
+          echo "stamped ${TAG} into both installers"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/install.sh
+            out/install.ps1
+
+  build:
+    needs: [check, invariants]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    strategy:
+      matrix:
+        target:
+          - { name: linux-x64, bun: bun-linux-x64 }
+          - { name: linux-arm64, bun: bun-linux-arm64 }
+          - { name: darwin-arm64, bun: bun-darwin-arm64 }
+          # Windows produces a .exe; bun has no windows-arm64 target yet.
+          - { name: windows-x64, bun: bun-windows-x64, ext: ".exe" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: latest }
+      - run: bun install --frozen-lockfile
+      - name: Compile
+        run: |
+          bun build packages/cli/src/index.ts \
+            --compile --minify --target=${{ matrix.target.bun }} \
+            --outfile dist/cloud-${{ matrix.target.name }}${{ matrix.target.ext }}
+      - name: Checksum
+        run: |
+          cd dist
+          f=cloud-${{ matrix.target.name }}${{ matrix.target.ext }}
+          sha256sum "$f" > "$f.sha256"
+      # Users are asked to pipe an install script into sh. The least we can do
+      # is publish provenance for what it downloads.
+      - uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: dist/cloud-${{ matrix.target.name }}${{ matrix.target.ext }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/cloud-${{ matrix.target.name }}${{ matrix.target.ext }}
+            dist/cloud-${{ matrix.target.name }}${{ matrix.target.ext }}.sha256

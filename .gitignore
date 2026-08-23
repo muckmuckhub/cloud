@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+proxy/forwarding.secret
+data/
+docker-compose.yml
+
+# Docs site build output.
+site/

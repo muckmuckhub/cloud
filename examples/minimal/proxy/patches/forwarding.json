@@ -1,0 +1,48 @@
+{
+  "patches": [
+    {
+      "file": "/data/config/paper-global.yml",
+      "ops": [
+        {
+          "$set": {
+            "path": "$.proxies.velocity.enabled",
+            "value": "${CFG_VELOCITY_ENABLED}",
+            "value-type": "bool"
+          }
+        },
+        {
+          "$set": {
+            "path": "$.proxies.velocity.online-mode",
+            "value": "${CFG_VELOCITY_ONLINE_MODE}",
+            "value-type": "bool"
+          }
+        },
+        {
+          "$set": {
+            "path": "$.proxies.velocity.secret",
+            "value": "${CFG_FORWARDING_SECRET}"
+          }
+        },
+        {
+          "$set": {
+            "path": "$.proxies.bungee-cord.online-mode",
+            "value": false,
+            "value-type": "bool"
+          }
+        }
+      ]
+    },
+    {
+      "file": "/data/spigot.yml",
+      "ops": [
+        {
+          "$set": {
+            "path": "$.settings.bungeecord",
+            "value": false,
+            "value-type": "bool"
+          }
+        }
+      ]
+    }
+  ]
+}

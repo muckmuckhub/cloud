@@ -1,0 +1,26 @@
+{
+  "file": "/data/config/paper-global.yml",
+  "ops": [
+    {
+      "$set": {
+        "path": "$.proxies.velocity.enabled",
+        "value": "${CFG_VELOCITY_ENABLED}",
+        "value-type": "bool"
+      }
+    },
+    {
+      "$set": {
+        "path": "$.proxies.velocity.online-mode",
+        "value": "${CFG_VELOCITY_ONLINE_MODE}",
+        "value-type": "bool"
+      }
+    },
+    {
+      "$set": {
+        "path": "$.proxies.bungee-cord.online-mode",
+        "value": "${CFG_BUNGEE_ONLINE_MODE}",
+        "value-type": "bool"
+      }
+    }
+  ]
+}

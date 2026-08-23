@@ -1,0 +1,71 @@
+# Docs site config.
+#
+# The pages under docs/ are plain Markdown with no site-generator syntax in
+# them, so this file is swappable: point VitePress or Docusaurus at the same
+# directory and the content works unchanged. MkDocs Material is here because it
+# needs nothing in the repository except this file and a CI job.
+#
+#   pip install mkdocs-material
+#   mkdocs serve            # http://127.0.0.1:8000
+#
+# Replace muckmuckhub below before deploying.
+
+site_name: cloud
+site_description: Run a Minecraft network from one config file.
+repo_url: https://github.com/muckmuckhub/cloud
+repo_name: muckmuckhub/cloud
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+nav:
+  - Home: index.md
+  - Install: install.md
+  - Getting started: getting-started.md
+  - Configuration: configuration.md
+  - Commands: commands.md
+  - Guides:
+      - Scaling and updates: scaling.md
+      - Server files: server-files.md
+      - Forwarding: forwarding.md
+      - Proxies: proxies.md
+      - Presets: presets.md
+      - Integrations: integrations.md
+      - AI features: ai.md
+  - Reference:
+      - Troubleshooting: troubleshooting.md
+      - Windows: windows.md
+      - Design: design.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.details
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/muckmuckhub/cloud

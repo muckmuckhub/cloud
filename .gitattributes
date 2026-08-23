@@ -1,0 +1,19 @@
+# Normalise on checkin, but pin the files where a CRLF actually breaks things.
+* text=auto eol=lf
+
+# Shell scripts with CRLF fail with "bad interpreter".
+*.sh          text eol=lf
+# These are read inside Linux containers.
+docker-compose.yml text eol=lf
+*.toml        text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+
+# PowerShell is happier with CRLF.
+*.ps1         text eol=crlf
+
+# The forwarding secret must be byte-exact. It is gitignored, but if anyone
+# ever commits one, do not let git rewrite its line endings.
+forwarding.secret -text
+*.jar         binary
+*.zip         binary

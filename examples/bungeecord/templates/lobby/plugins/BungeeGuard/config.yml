@@ -1,0 +1,11 @@
+# BungeeGuard checks that incoming connections carry a known token.
+#
+# The token itself is NOT here: it lives in proxy/forwarding.secret, which is
+# gitignored and per-machine, and every backend receives it as the environment
+# variable CFG_FORWARDING_SECRET. Committing it to a template would put a
+# credential in git, which is exactly what the secret handling avoids.
+#
+# Paste the value of `cat proxy/forwarding.secret` in place of the placeholder
+# below, or leave the template out and let the plugin generate its own config.
+allowed-tokens:
+  - "PUT-THE-FORWARDING-SECRET-HERE"
