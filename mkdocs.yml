@@ -5,10 +5,11 @@
 # directory and the content works unchanged. MkDocs Material is here because it
 # needs nothing in the repository except this file and a CI job.
 #
-#   pip install mkdocs-material
+#   pip install -r requirements-docs.txt
 #   mkdocs serve            # http://127.0.0.1:8000
 #
-# Replace muckmuckhub below before deploying.
+# The toolchain is pinned in requirements-docs.txt so a new major of
+# mkdocs-material breaks the build in a bump PR, not in an unrelated one.
 
 site_name: cloud
 site_description: Run a Minecraft network from one config file.

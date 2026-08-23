@@ -83,9 +83,14 @@ The site under `docs/` is plain Markdown with no generator-specific syntax, so
 it renders anywhere. MkDocs Material builds it and GitHub Pages serves it:
 
 ```sh
-pip install mkdocs-material
+pip install -r requirements-docs.txt
 bun run docs                          # http://127.0.0.1:8000
 ```
+
+The Python toolchain is pinned in `requirements-docs.txt`, and it is the only
+Python in the repository — the CLI is Bun, and `bun run check` validates the
+docs navigation and links without it. CI installs from that file, so adding a
+docs plugin means adding it there.
 
 `bun run check` already verifies that every page is in the nav and every
 internal link resolves, so you do not need Python to catch a broken link. Add
