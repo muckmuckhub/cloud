@@ -26,6 +26,36 @@ const MEMORY = z
   .regex(/^\d+[MmGg]$/, "must look like 512M or 4G")
   .describe("JVM heap size, e.g. 2G");
 
+const MEMORY_LIMIT = z
+  .string()
+  .regex(/^\d+[MmGg]$/, "must look like 1536M or 5G")
+  .describe(
+    "Container memory cap. Leave unset to derive it from memory; set it higher " +
+      "if a plugin needs a lot of off-heap memory.",
+  );
+
+/** `512m`, `512M`, `4G` -> MiB. Assumes the MEMORY format has been validated. */
+export function memoryMiB(value: string): number {
+  const n = Number(value.slice(0, -1));
+  return /[Gg]$/.test(value) ? n * 1024 : n;
+}
+
+/**
+ * The container memory cap for a JVM with the given heap.
+ *
+ * `memory` is the heap (-Xmx), and a JVM uses a good deal more than its heap:
+ * metaspace, thread stacks, the JIT, and Netty's direct buffers. A cap equal
+ * to the heap gets the container OOM-killed under load, which looks like a
+ * random crash loop with nothing in the server log. A quarter on top, and at
+ * least 512M, covers that. Lives here rather than in the renderer because
+ * validation needs it too.
+ */
+export function containerLimitMiB(heap: string, limit?: string): number {
+  if (limit) return memoryMiB(limit);
+  const mib = memoryMiB(heap);
+  return mib + Math.max(Math.ceil(mib / 4), 512);
+}
+
 const MC_VERSION = z
   .string()
   .regex(/^\d+\.\d+(\.\d+)?$/, "must look like 1.21.10")
@@ -59,7 +89,33 @@ export function hostPort(mapping: string): { port: number; proto: "tcp" | "udp" 
   };
 }
 
-export const ProxySoftware = z.enum(["velocity", "bungeecord", "waterfall"]);
+/**
+ * A pinned plugin reference, `slug:version`. The version is required: an
+ * unpinned reference resolves to whatever is newest at container start, which
+ * is the same silent drift that turned `/latest/` download URLs into
+ * crash-looping servers. A URL here is a mistake — those go in `plugins`.
+ */
+const pluginRef = (site: string, example: string, where: string) =>
+  z
+    .string()
+    .regex(
+      /^[A-Za-z0-9_.-]+:[A-Za-z0-9_.+-]+$/,
+      `must look like "${example}" — a project slug and a pinned version. ` +
+        `Versions are listed at ${where}`,
+    )
+    .describe(`${site} project slug and pinned version, e.g. ${example}`);
+
+const MODRINTH_REFS = z
+  .array(pluginRef("Modrinth", "luckperms:v5.5.71-bukkit", "https://modrinth.com/plugin/<slug>/versions"))
+  .default([])
+  .describe("Plugins from Modrinth, as slug:version");
+
+const HANGAR_REFS = z
+  .array(pluginRef("Hangar", "ViaVersion:5.11.0", "https://hangar.papermc.io/<author>/<slug>/versions"))
+  .default([])
+  .describe("Plugins from Hangar (hangar.papermc.io), as slug:version");
+
+export const ProxySoftware =z.enum(["velocity", "bungeecord", "waterfall"]);
 export const ServerSoftware = z.enum(["paper", "folia", "purpur", "spigot"]);
 export const Forwarding = z.enum(["modern", "legacy", "bungeeguard", "none"]);
 
@@ -79,10 +135,13 @@ export const ProxySchema = z.object({
     "Override the Java version. Leave unset to derive it from the software version.",
   ),
   memory: MEMORY.default("512m"),
+  memory_limit: MEMORY_LIMIT.optional(),
   plugins: z
     .array(z.string().url())
     .default([])
     .describe("Direct download URLs for proxy plugins"),
+  modrinth: MODRINTH_REFS,
+  hangar: HANGAR_REFS,
   ports: z
     .array(PORT_MAPPING)
     .default([])
@@ -104,6 +163,7 @@ export const GroupSchema = z.object({
     "Override the Java version. Leave unset to derive it from the Minecraft version.",
   ),
   memory: MEMORY.default("2G"),
+  memory_limit: MEMORY_LIMIT.optional(),
   min: z
     .number()
     .int()
@@ -134,6 +194,8 @@ export const GroupSchema = z.object({
         "including the world, are untouched.",
     ),
   plugins: z.array(z.string().url()).default([]),
+  modrinth: MODRINTH_REFS,
+  hangar: HANGAR_REFS,
   env: z
     .record(z.string(), z.string())
     .default({})
@@ -197,6 +259,31 @@ export const CloudConfigSchema = z
           .join(", ")}`,
       });
     }
+    // A cap at or below the heap is an OOM kill waiting for the heap to fill,
+    // and the server log says nothing about it — Docker just restarts it.
+    const limits: [(string | number)[], string, string | undefined][] = [
+      [["proxy", "memory_limit"], cfg.proxy.memory, cfg.proxy.memory_limit],
+      ...Object.entries(cfg.groups).map(
+        ([name, g]) =>
+          [["groups", name, "memory_limit"], g.memory, g.memory_limit] as [
+            string[],
+            string,
+            string | undefined,
+          ],
+      ),
+    ];
+    for (const [path, heap, limit] of limits) {
+      if (limit && memoryMiB(limit) <= memoryMiB(heap)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path,
+          message:
+            `memory_limit ${limit} must be larger than memory ${heap}: the JVM ` +
+            `needs room beyond its heap. Remove it to use the derived default.`,
+        });
+      }
+    }
+
     for (const [name, g] of Object.entries(cfg.groups)) {
       if (g.static && g.min > 1) {
         ctx.addIssue({

@@ -14,6 +14,7 @@
  * for whoever runs `cloud add`, so it is worth finding on our side.
  */
 import { PRESETS } from "../packages/cli/src/presets/registry.ts";
+import { hangarUrl } from "../packages/cli/src/render/compose.ts";
 
 const JAR_TYPES = [
   "application/java-archive",
@@ -27,18 +28,39 @@ interface Target {
   preset: string;
   url: string;
   docs?: string;
+  /** "jar": must serve a jar. "modrinth": must be a Modrinth version with files. */
+  kind: "jar" | "modrinth";
 }
 
 const targets: Target[] = [];
 for (const preset of Object.values(PRESETS)) {
   for (const url of [...(preset.proxyPlugins ?? []), ...(preset.allGroupPlugins ?? [])]) {
-    targets.push({ preset: preset.name, url, docs: preset.docs });
+    targets.push({ preset: preset.name, url, docs: preset.docs, kind: "jar" });
+  }
+  // Hangar references are checked through the same function that renders
+  // them, so this tests the URL the container will actually fetch.
+  for (const ref of preset.proxyHangar ?? []) {
+    targets.push({ preset: preset.name, url: hangarUrl(ref, "VELOCITY"), docs: preset.docs, kind: "jar" });
+  }
+  for (const ref of preset.allGroupHangar ?? []) {
+    targets.push({ preset: preset.name, url: hangarUrl(ref, "PAPER"), docs: preset.docs, kind: "jar" });
+  }
+  // Modrinth references are resolved by the image at container start. The
+  // version endpoint accepts a version number or ID, the same as the image.
+  for (const ref of [...(preset.proxyModrinth ?? []), ...(preset.allGroupModrinth ?? [])]) {
+    const [slug, version] = ref.split(":");
+    targets.push({
+      preset: preset.name,
+      url: `https://api.modrinth.com/v2/project/${slug}/version/${version}`,
+      docs: preset.docs,
+      kind: "modrinth",
+    });
   }
 }
 
-console.log(`checking ${targets.length} plugin URL(s)\n`);
+console.log(`checking ${targets.length} plugin URL(s) and reference(s)\n`);
 
-for (const { preset, url, docs } of targets) {
+for (const { preset, url, docs, kind } of targets) {
   let verdict: string;
   let ok = false;
   try {
@@ -49,13 +71,19 @@ for (const { preset, url, docs } of targets) {
       signal: AbortSignal.timeout(30_000),
     });
     const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();
-    ok = res.ok && JAR_TYPES.includes(type);
-    verdict = `${res.status} ${type || "(no content-type)"}`;
-    if (res.ok && !ok) {
+    if (kind === "modrinth") {
+      const body = res.ok ? ((await res.json()) as { files?: unknown[] }) : {};
+      ok = res.ok && !!body.files?.length;
+      verdict = `${res.status} ${ok ? "version exists" : "no such version"}`;
+    } else {
+      ok = res.ok && JAR_TYPES.includes(type);
+      verdict = `${res.status} ${type || "(no content-type)"}`;
+    }
+    if (kind === "jar" && res.ok && !ok) {
       // The failure mode that started this: 200 OK, text/html, a homepage.
       verdict += ` — served a page, not a jar (redirected to ${res.url})`;
     }
-    await res.body?.cancel();
+    if (!res.bodyUsed) await res.body?.cancel();
   } catch (err) {
     verdict = `request failed: ${(err as Error).message}`;
   }

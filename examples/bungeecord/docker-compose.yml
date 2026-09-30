@@ -6,6 +6,7 @@ services:
     image: itzg/mc-proxy:java17
     container_name: bungee-example-proxy
     restart: unless-stopped
+    mem_limit: 1024m
     environment:
       TYPE: "BUNGEECORD"
       MEMORY: "512m"
@@ -30,6 +31,7 @@ services:
     image: itzg/minecraft-server:java21
     container_name: bungee-example-lobby-1
     restart: unless-stopped
+    mem_limit: 2560m
     environment:
       EULA: "TRUE"
       TYPE: "PAPER"
@@ -73,6 +75,7 @@ services:
     image: itzg/minecraft-server:java21
     container_name: bungee-example-lobby-2
     restart: unless-stopped
+    mem_limit: 2560m
     environment:
       EULA: "TRUE"
       TYPE: "PAPER"
@@ -116,6 +119,7 @@ services:
     image: itzg/minecraft-server:java21
     container_name: bungee-example-survival
     restart: unless-stopped
+    mem_limit: 5120m
     environment:
       EULA: "TRUE"
       TYPE: "PAPER"

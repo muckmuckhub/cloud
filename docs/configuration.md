@@ -57,7 +57,10 @@ Plugin files are on the host either way — see [Server files](server-files.md).
 | `version` | string | `"3.4.0-SNAPSHOT"` | Pins Velocity only. Not `latest` — that resolves to a 4.x snapshot. |
 | `java` | int | derived | Override the container's Java version. |
 | `memory` | string | `"512m"` | Looks like `512M` or `4G`. |
+| `memory_limit` | string | derived | Container memory cap. See [Memory](#memory). |
 | `plugins` | string[] | `[]` | Direct download URLs. |
+| `modrinth` | string[] | `[]` | `slug:version` — see [Plugins](#plugins). |
+| `hangar` | string[] | `[]` | `slug:version` — see [Plugins](#plugins). |
 | `ports` | string[] | `[]` | Extra published ports, e.g. `"19132:19132/udp"`. |
 | `env` | table | `{}` | Extra environment variables for the proxy container. |
 
@@ -79,13 +82,52 @@ digits and dashes, starting with a letter.
 | `software` | enum | `"paper"` | Also `folia`, `purpur`, `spigot`. |
 | `version` | string | — | Required. Looks like `1.21.10`. |
 | `memory` | string | `"2G"` | JVM heap. |
+| `memory_limit` | string | derived | Container memory cap. See [Memory](#memory). |
 | `java` | int | derived | Override the container's Java version. |
 | `min` | int | `1` | How many instances to run. 0–50. |
 | `fallback` | bool | `false` | Players land here. Exactly one group must set it. |
 | `static` | bool | `false` | Own directory under `data/`, one instance only. |
 | `template` | string | — | Directory under `templates/` — see [Server files](server-files.md). |
 | `plugins` | string[] | `[]` | Direct download URLs. |
+| `modrinth` | string[] | `[]` | `slug:version` — see [Plugins](#plugins). |
+| `hangar` | string[] | `[]` | `slug:version` — see [Plugins](#plugins). |
 | `env` | table | `{}` | Extra environment variables, merged last so they win. |
+
+### Plugins
+
+Three ways to name a plugin, on groups and on the proxy alike:
+
+```toml
+[groups.lobby]
+plugins  = ["https://example.com/SomePlugin-1.2.jar"]   # a direct URL
+modrinth = ["luckperms:v5.5.71-bukkit"]                  # Modrinth slug:version
+hangar   = ["ViaVersion:5.11.0"]                         # Hangar slug:version
+```
+
+A reference must carry a version. An unpinned one would resolve to whatever is
+newest at every container start, which is how `/latest/` URLs turned into
+crash-looping servers. Modrinth lists versions at
+`https://modrinth.com/plugin/<slug>/versions` — use the *version number* shown
+there, which for some projects is per platform (`v5.5.71-bukkit`,
+`v5.5.71-velocity`). Hangar slugs are case-sensitive.
+
+Hangar references are turned into download URLs when rendering, using the
+`PAPER` platform on backends and `VELOCITY` or `WATERFALL` on the proxy.
+Modrinth references are resolved by the server image at start, along with any
+dependencies the plugin declares as required.
+
+### Memory
+
+`memory` is the JVM heap. A JVM uses more than its heap — metaspace, threads,
+the JIT, network buffers — so each container is capped at the heap plus a
+quarter, and at least 512M more: `512m` gets `1024m`, `2G` gets `2560m`,
+`4G` gets `5120m`. Without a cap, one leaking server can take the host down
+with everything else on it.
+
+Set `memory_limit` when a plugin needs a lot of memory outside the heap (map
+renderers are the usual ones). It must be larger than `memory`. A container
+that hits its cap is killed and restarted by Docker — see
+[Troubleshooting](troubleshooting.md#it-restarts-with-exit-code-137).
 
 ### `static` does not mean "persistent"
 
@@ -109,6 +151,8 @@ not discarded.
 4. `forwarding = "modern"` requires `proxy.software = "velocity"`.
 5. No entry in `proxy.ports` may republish `entry_port` on TCP, or collide with
    another entry on the same host port and protocol.
+6. `memory_limit`, where set, is larger than `memory`.
+7. `modrinth` and `hangar` entries are `slug:version` with a version.
 
 Validation failures print every problem with its path and exit without touching
 Docker:

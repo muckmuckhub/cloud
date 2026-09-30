@@ -51,6 +51,10 @@ const MY_PRESET: Preset = {
   docs: "https://link-to-what-this-installs",
   proxyPlugins: ["https://..."],
   allGroupPlugins: ["https://..."],
+  allGroupHangar: ["ViaVersion:5.11.0"],        // preferred: slug:version
+  allGroupModrinth: ["some-plugin:1.2.3"],
+  proxyHangar: ["SomeProxyPlugin:1.0.0"],
+  proxyModrinth: ["some-proxy-plugin:1.0.0"],
   allGroupEnv: { SOME_SETTING: "value" },
   proxyEnv: { SOME_SETTING: "value" },
   proxyPorts: ["19132:19132/udp"],   // proxy only; backends never publish
@@ -66,8 +70,11 @@ Rules:
   user set by hand.
 - **Ports go on the proxy.** A preset cannot open a port on a backend, and CI
   asserts it.
-- **Pin a version.** Prefer official download URLs over mirrors, and do not use
-  a `/latest/` path unless you have checked that it really serves a jar.
+- **Pin a version.** Prefer a Hangar or Modrinth `slug:version` reference
+  over a URL — the version is the whole reference, so there is no path that can
+  start redirecting. Otherwise prefer official download URLs over mirrors, and
+  do not use a `/latest/` path unless you have checked that it really serves a
+  jar.
 
 That last rule is not theoretical. Two presets once shipped `/latest/` URLs
 that had quietly started redirecting to a project homepage; the downloader
@@ -75,7 +82,7 @@ wrote the HTML page where a jar belonged, and the server crash-looped with a
 Java stack trace that never mentions the URL.
 
 ```sh
-bun run links      # checks every preset URL still serves a jar
+bun run links      # checks every preset URL and reference still resolves
 ```
 
 CI runs that weekly, so link rot surfaces on its own instead of in someone's
@@ -89,3 +96,4 @@ current version.
 - Applying it twice changes nothing.
 - It opens ports on the proxy and nowhere else.
 - It has a description, and a docs link if it installs jars.
+- Its Hangar and Modrinth references reach the rendered container.

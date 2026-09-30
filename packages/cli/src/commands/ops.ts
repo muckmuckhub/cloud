@@ -1,9 +1,11 @@
 import { loadConfig, requireRoot } from "../config.ts";
 import {
   compose,
+  parsePlayerList,
   rcon,
   status as dockerStatus,
   waitForHealthy,
+  type PlayerList,
 } from "../docker.ts";
 import { instanceNames } from "../render/compose.ts";
 import { c, confirm, fail, info, table, sym } from "../ui.ts";
@@ -13,10 +15,75 @@ function contextOf(argv: string[]): string | undefined {
   return optionValue(argv, "--context");
 }
 
+/**
+ * Asks every running backend for its player list, in parallel.
+ *
+ * Only backends: Velocity and BungeeCord have no RCON. A server that is still
+ * booting, has RCON off, or takes too long answers null — `status` is how you
+ * find out something is wrong, so it must not fail because something is.
+ */
+async function playerCounts(
+  root: string,
+  services: string[],
+  context: string | undefined,
+): Promise<Map<string, PlayerList | null>> {
+  const results = await Promise.allSettled(
+    services.map((s) => rcon(root, s, "list", context, 10_000)),
+  );
+  return new Map(
+    services.map((s, i) => {
+      const r = results[i];
+      return [s, r.status === "fulfilled" ? parsePlayerList(r.value) : null];
+    }),
+  );
+}
+
 export async function status(argv: string[]): Promise<void> {
   const root = requireRoot();
   const cfg = await loadConfig(root);
-  const rows = await dockerStatus(root, contextOf(argv));
+  const context = contextOf(argv);
+  const json = hasFlag(argv, "--json");
+  const rows = await dockerStatus(root, context);
+
+  const groupOf = new Map<string, string>();
+  for (const [g, group] of Object.entries(cfg.groups)) {
+    for (const n of instanceNames(g, group.min)) groupOf.set(n, g);
+  }
+  const declared = ["proxy", ...groupOf.keys()];
+  const running = new Set(rows.filter((r) => r.state === "running").map((r) => r.name));
+  const missing = declared.filter((d) => !running.has(d));
+  const players = await playerCounts(
+    root,
+    rows.filter((r) => r.state === "running" && groupOf.has(r.name)).map((r) => r.name),
+    context,
+  );
+
+  if (json) {
+    // A stable contract for scripts and monitoring: bump `version` if a field
+    // changes meaning or goes away. Nothing but JSON on stdout.
+    console.log(
+      JSON.stringify(
+        {
+          version: 1,
+          network: cfg.network.name,
+          entry_port: cfg.network.entry_port,
+          forwarding: cfg.network.forwarding,
+          services: rows.map((r) => ({
+            name: r.name,
+            group: groupOf.get(r.name) ?? null,
+            state: r.state,
+            health: r.health === "-" ? null : r.health,
+            uptime: r.uptime,
+            players: players.get(r.name) ?? null,
+          })),
+          missing,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
 
   info(
     `${c.bold(cfg.network.name)} ${c.dim(
@@ -26,22 +93,27 @@ export async function status(argv: string[]): Promise<void> {
   info("");
   info(
     table(
-      rows.map((r) => ({
-        service: r.name,
-        state: r.state === "running" ? c.green(r.state) : c.yellow(r.state),
-        health: r.health,
-        uptime: r.uptime,
-      })),
-      ["service", "state", "health", "uptime"],
+      rows.map((r) => {
+        const p = players.get(r.name);
+        return {
+          service: r.name,
+          state: r.state === "running" ? c.green(r.state) : c.yellow(r.state),
+          health: r.health,
+          players: p ? `${p.online}/${p.max}` : "-",
+          uptime: r.uptime,
+        };
+      }),
+      ["service", "state", "health", "players", "uptime"],
     ),
   );
 
-  const declared = new Set(["proxy"]);
-  for (const [g, group] of Object.entries(cfg.groups)) {
-    for (const n of instanceNames(g, group.min)) declared.add(n);
+  const counted = [...players.values()].filter((p): p is PlayerList => !!p);
+  if (counted.length) {
+    const total = counted.reduce((sum, p) => sum + p.online, 0);
+    info("");
+    info(c.dim(`  ${total} player${total === 1 ? "" : "s"} online`));
   }
-  const running = new Set(rows.filter((r) => r.state === "running").map((r) => r.name));
-  const missing = [...declared].filter((d) => !running.has(d));
+
   if (missing.length) {
     info("");
     info(c.yellow(`  not running: ${missing.join(", ")}`));

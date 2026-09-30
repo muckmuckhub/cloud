@@ -1,3 +1,4 @@
+import { containerLimitMiB } from "@cloud/schema";
 import type { CloudConfig } from "../types.ts";
 import { proxyConfigFile, wiringFor } from "./forwarding.ts";
 
@@ -44,6 +45,45 @@ function proxyImage(software: string, version: string, override?: number): strin
 
 function serverImage(mcVersion: string, override?: number): string {
   return `itzg/minecraft-server:java${override ?? javaFor(mcVersion)}`;
+}
+
+export type HangarPlatform = "PAPER" | "VELOCITY" | "WATERFALL";
+
+/**
+ * Hangar has no support in the itzg images, but its download URL is a pure
+ * function of slug, version and platform — so a `hangar` reference becomes an
+ * ordinary `PLUGINS` entry and needs nothing at container start.
+ */
+export function hangarUrl(ref: string, platform: HangarPlatform): string {
+  const [slug, version] = ref.split(":");
+  return `https://hangar.papermc.io/api/v1/projects/${slug}/versions/${version}/${platform}/download`;
+}
+
+/** Hangar's platform for a proxy: BungeeCord takes Waterfall builds. */
+export function proxyHangarPlatform(software: string): HangarPlatform {
+  return software === "velocity" ? "VELOCITY" : "WATERFALL";
+}
+
+/**
+ * The plugin environment shared by the proxy and backends: URLs and Hangar
+ * references both land in `PLUGINS`, Modrinth references in the image's own
+ * resolver.
+ */
+function pluginEnv(
+  source: { plugins: string[]; modrinth: string[]; hangar: string[] },
+  platform: HangarPlatform,
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  const urls = [...source.plugins, ...source.hangar.map((r) => hangarUrl(r, platform))];
+  if (urls.length) env.PLUGINS = urls.join(",");
+  if (source.modrinth.length) {
+    env.MODRINTH_PROJECTS = source.modrinth.join(",");
+    // A plugin missing its library fails at load time the same way a bad
+    // download does — a crash loop that never names the missing jar. The
+    // image resolves required dependencies if asked; it is off by default.
+    env.MODRINTH_DOWNLOAD_DEPENDENCIES = "required";
+  }
+  return env;
 }
 
 function yamlValue(v: unknown): string {
@@ -138,9 +178,7 @@ export function renderCompose(cfg: CloudConfig): string {
   }
   // BungeeCord and Waterfall images track the latest build of their software,
   // so proxy.version pins Velocity only. See SPEC.md.
-  if (cfg.proxy.plugins.length) {
-    proxyEnv.PLUGINS = cfg.proxy.plugins.join(",");
-  }
+  Object.assign(proxyEnv, pluginEnv(cfg.proxy, proxyHangarPlatform(cfg.proxy.software)));
   Object.assign(proxyEnv, {
     CLOUD_NETWORK: cfg.network.name,
     CLOUD_INSTANCE: "proxy",
@@ -155,6 +193,9 @@ export function renderCompose(cfg: CloudConfig): string {
   );
   lines.push(`    container_name: ${cfg.network.name}-proxy`);
   lines.push(`    restart: unless-stopped`);
+  lines.push(
+    `    mem_limit: ${containerLimitMiB(cfg.proxy.memory, cfg.proxy.memory_limit)}m`,
+  );
   lines.push(`    environment:`);
   lines.push(envBlock(proxyEnv, "      "));
   lines.push(`    ports:`);
@@ -211,7 +252,7 @@ export function renderCompose(cfg: CloudConfig): string {
             "${FORWARDING_SECRET:?run `cloud apply` to generate one}";
         }
       }
-      if (g.plugins.length) env.PLUGINS = g.plugins.join(",");
+      Object.assign(env, pluginEnv(g, "PAPER"));
       if (g.template) {
         // Copy the whole template tree into /data, so templates/<name>/ mirrors
         // the server directory: plugins/Foo/config.yml lands where you expect.
@@ -249,6 +290,9 @@ export function renderCompose(cfg: CloudConfig): string {
       lines.push(`    image: ${serverImage(g.version, g.java)}`);
       lines.push(`    container_name: ${cfg.network.name}-${instance}`);
       lines.push(`    restart: unless-stopped`);
+      // Heap plus headroom; see containerLimitMiB. Without a cap, one leaking
+      // server can take the whole host down with it.
+      lines.push(`    mem_limit: ${containerLimitMiB(g.memory, g.memory_limit)}m`);
       lines.push(`    environment:`);
       lines.push(envBlock(env, "      "));
       lines.push(`    expose:`);

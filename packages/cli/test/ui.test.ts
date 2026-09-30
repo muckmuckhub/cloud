@@ -32,3 +32,19 @@ describe("table", () => {
     expect(out).not.toContain("undefined");
   });
 });
+
+describe("table with colour", () => {
+  test("aligns columns whose cells carry escape codes", () => {
+    const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+    const out = table(
+      [
+        { state: green("running"), uptime: "2 hours" },
+        { state: "exited", uptime: "1 minute" },
+      ],
+      ["state", "uptime"],
+    );
+    const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+    const [, first, second] = out.split("\n").map(strip);
+    expect(first.indexOf("2 hours")).toBe(second.indexOf("1 minute"));
+  });
+});

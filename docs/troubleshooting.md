@@ -74,7 +74,8 @@ java = 25
 
 Very often a bad plugin URL. If a download URL redirects to a project homepage,
 the downloader writes the HTML page where a jar belonged and the server dies
-with a stack trace that never mentions the URL. Check your `plugins` entries
+with a stack trace that never mentions the URL. Prefer `modrinth` or `hangar`
+references, which cannot rot this way. Check your `plugins` entries
 actually return a jar:
 
 ```sh
@@ -82,6 +83,20 @@ curl -sIL -o /dev/null -w "%{http_code} %{content_type}\n" "<the url>"
 ```
 
 You want `application/java-archive`, not `text/html`.
+
+### It restarts with exit code 137
+
+The container hit its memory cap and the kernel killed it. The server log just
+stops, with no error. Confirm with:
+
+```sh
+docker inspect --format "{{.State.OOMKilled}}" <network>-<server>
+```
+
+`true` means the JVM needed more than its heap allows for. Raise
+`memory_limit` on that group (or the proxy); see
+[Configuration](configuration.md#memory). Raising `memory` alone does not help
+if the cap is derived from it, because the headroom stays the same size.
 
 ### `Unable to connect you to lobby`
 

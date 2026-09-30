@@ -21,7 +21,7 @@ ${c.dim("SETUP")}
   add [preset]         Add a community preset. No argument lists them.
 
 ${c.dim("OPERATE")}
-  status               What is running
+  status [--json]      What is running, with player counts
   logs [server] [-f]   Tail logs (defaults to the proxy)
   exec <server> "<cmd>"  Run a Minecraft console command via RCON
   restart [server]     Restart one service or everything

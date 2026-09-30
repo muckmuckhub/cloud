@@ -75,11 +75,16 @@ export function table(
   columns: string[],
 ): string {
   if (!rows.length) return c.dim("(nothing running)");
+  // Measured without colour codes: `padEnd` counts escape bytes as width, so a
+  // green "running" was padded as if it were nine characters longer.
+  const visible = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").length;
   const widths = columns.map((col) =>
-    Math.max(col.length, ...rows.map((r) => (r[col] ?? "").length)),
+    Math.max(col.length, ...rows.map((r) => visible(r[col] ?? ""))),
   );
   const line = (cells: string[]) =>
-    cells.map((cell, i) => cell.padEnd(widths[i])).join("  ");
+    cells
+      .map((cell, i) => cell + " ".repeat(Math.max(0, widths[i] - visible(cell))))
+      .join("  ");
   return [
     c.dim(line(columns.map((h) => h.toUpperCase()))),
     ...rows.map((r) => line(columns.map((col) => r[col] ?? ""))),

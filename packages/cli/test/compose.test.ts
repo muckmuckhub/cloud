@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { parse as parseYaml } from "yaml";
 import {
+  hangarUrl,
   hostDirs,
   hostPluginDir,
   instanceNames,
   javaFor,
+  proxyHangarPlatform,
   proxyJavaFor,
   renderCompose,
 } from "../src/render/compose.ts";
@@ -16,6 +18,7 @@ interface Service {
   volumes?: string[];
   environment?: Record<string, string>;
   expose?: string[];
+  mem_limit?: string;
 }
 
 function services(cfg: Parameters<typeof renderCompose>[0]): Record<string, Service> {
@@ -464,5 +467,96 @@ describe("purity", () => {
       network: { name: "test", motd: "yes: no #1 {a} [b]" },
     });
     expect(services(cfg).proxy.environment?.CFG_MOTD).toBe("yes: no #1 {a} [b]");
+  });
+});
+
+describe("memory limits", () => {
+  test("every container is capped above its heap by the derived headroom", () => {
+    const s = services(config({ groups: { lobby: { version: "1.21.10", fallback: true, memory: "4G" } } }));
+    // 512m heap + 512m floor; 4G heap + a quarter.
+    expect(s.proxy.mem_limit).toBe("1024m");
+    expect(s.lobby.mem_limit).toBe("5120m");
+  });
+
+  test("the default 2G heap gets the 512M floor", () => {
+    const s = services(config());
+    expect(s.lobby.mem_limit).toBe("2560m");
+  });
+
+  test("memory_limit overrides the derived cap", () => {
+    const s = services(
+      config({
+        proxy: { memory_limit: "2G" },
+        groups: { lobby: { version: "1.21.10", fallback: true, memory_limit: "6G" } },
+      }),
+    );
+    expect(s.proxy.mem_limit).toBe("2048m");
+    expect(s.lobby.mem_limit).toBe("6144m");
+  });
+});
+
+describe("plugin references", () => {
+  test("hangar references become download URLs next to plain plugins", () => {
+    const s = services(
+      config({
+        groups: {
+          lobby: {
+            version: "1.21.10",
+            fallback: true,
+            plugins: ["https://example.com/a.jar"],
+            hangar: ["ViaVersion:5.11.0"],
+          },
+        },
+      }),
+    );
+    expect(s.lobby.environment?.PLUGINS).toBe(
+      "https://example.com/a.jar," +
+        "https://hangar.papermc.io/api/v1/projects/ViaVersion/versions/5.11.0/PAPER/download",
+    );
+  });
+
+  test("modrinth references go to the image's resolver, with dependencies", () => {
+    const s = services(
+      config({
+        groups: { lobby: { version: "1.21.10", fallback: true, modrinth: ["luckperms:v5.5.71-bukkit"] } },
+      }),
+    );
+    expect(s.lobby.environment?.MODRINTH_PROJECTS).toBe("luckperms:v5.5.71-bukkit");
+    expect(s.lobby.environment?.MODRINTH_DOWNLOAD_DEPENDENCIES).toBe("required");
+  });
+
+  test("no references means no plugin variables at all", () => {
+    const env = services(config()).lobby.environment ?? {};
+    expect(env.PLUGINS).toBeUndefined();
+    expect(env.MODRINTH_PROJECTS).toBeUndefined();
+  });
+
+  test("the proxy's hangar platform follows its software", () => {
+    expect(hangarUrl("x:1", proxyHangarPlatform("velocity"))).toEndWith("/VELOCITY/download");
+    expect(hangarUrl("x:1", proxyHangarPlatform("bungeecord"))).toEndWith("/WATERFALL/download");
+    const s = services(
+      config({
+        network: { name: "test", forwarding: "bungeeguard" },
+        proxy: { software: "waterfall", hangar: ["x:1"], modrinth: ["y:2"] },
+      }),
+    );
+    expect(s.proxy.environment?.PLUGINS).toEndWith("/projects/x/versions/1/WATERFALL/download");
+    expect(s.proxy.environment?.MODRINTH_PROJECTS).toBe("y:2");
+  });
+
+  test("hand-set env still wins over derived plugin variables", () => {
+    const s = services(
+      config({
+        groups: {
+          lobby: {
+            version: "1.21.10",
+            fallback: true,
+            modrinth: ["a:1"],
+            env: { MODRINTH_DOWNLOAD_DEPENDENCIES: "optional" },
+          },
+        },
+      }),
+    );
+    expect(s.lobby.environment?.MODRINTH_DOWNLOAD_DEPENDENCIES).toBe("optional");
   });
 });

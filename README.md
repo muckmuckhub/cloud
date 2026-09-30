@@ -88,7 +88,7 @@ not a broken deploy.
 | `cloud apply` | Render, diff, confirm, reconcile. `--dry-run` stops at the diff. |
 | `cloud apply --rolling` | Update multi-instance groups one instance at a time. |
 | `cloud apply --rotate-secret` | New forwarding secret, then restart every backend. |
-| `cloud status` | What is running, and what should be but isn't. |
+| `cloud status [--json]` | What is running, player counts, and what should be but isn't. |
 | `cloud logs [server] [-f]` | Tail logs. Defaults to the proxy. |
 | `cloud exec <server> "<cmd>"` | Console command via RCON. |
 | `cloud restart <group> --rolling` | One instance at a time, waiting for each to be healthy. |
@@ -121,6 +121,8 @@ version  = "1.21.10"
 memory   = "2G"
 min      = 2          # two instances: lobby-1, lobby-2
 fallback = true       # players land here
+modrinth = ["luckperms:v5.5.71-bukkit"]   # pinned plugins, by slug:version
+hangar   = ["ViaVersion:5.11.0"]
 
 [groups.survival]
 version  = "1.21.10"

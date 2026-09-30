@@ -41,9 +41,18 @@ export function renderCloudToml(cfg: CloudConfig): string {
   out.push(`software = ${tomlString(cfg.proxy.software)}`);
   out.push(`version  = ${tomlString(cfg.proxy.version)}`);
   out.push(`memory   = ${tomlString(cfg.proxy.memory)}`);
+  if (cfg.proxy.memory_limit) {
+    out.push(`memory_limit = ${tomlString(cfg.proxy.memory_limit)}`);
+  }
   if (cfg.proxy.java) out.push(`java     = ${cfg.proxy.java}`);
   if (cfg.proxy.plugins.length) {
     out.push(`plugins  = ${tomlValue(cfg.proxy.plugins)}`);
+  }
+  if (cfg.proxy.modrinth.length) {
+    out.push(`modrinth = ${tomlValue(cfg.proxy.modrinth)}`);
+  }
+  if (cfg.proxy.hangar.length) {
+    out.push(`hangar   = ${tomlValue(cfg.proxy.hangar)}`);
   }
   if (cfg.proxy.ports.length) {
     out.push(`ports    = ${tomlValue(cfg.proxy.ports)}   # published alongside entry_port`);
@@ -62,6 +71,9 @@ export function renderCloudToml(cfg: CloudConfig): string {
     out.push(`software = ${tomlString(g.software)}`);
     out.push(`version  = ${tomlString(g.version)}`);
     out.push(`memory   = ${tomlString(g.memory)}`);
+    if (g.memory_limit) {
+      out.push(`memory_limit = ${tomlString(g.memory_limit)}`);
+    }
     if (g.java) out.push(`java     = ${g.java}`);
     out.push(`min      = ${g.min}`);
     if (g.fallback) {
@@ -72,6 +84,8 @@ export function renderCloudToml(cfg: CloudConfig): string {
     }
     if (g.template) out.push(`template = ${tomlString(g.template)}`);
     if (g.plugins.length) out.push(`plugins  = ${tomlValue(g.plugins)}`);
+    if (g.modrinth.length) out.push(`modrinth = ${tomlValue(g.modrinth)}`);
+    if (g.hangar.length) out.push(`hangar   = ${tomlValue(g.hangar)}`);
     if (Object.keys(g.env).length) {
       out.push("");
       out.push(`[groups.${name}.env]`);

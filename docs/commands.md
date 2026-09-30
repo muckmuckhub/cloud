@@ -63,18 +63,58 @@ See [Presets](presets.md).
 
 ### `cloud status`
 
-What is running, and what should be but isn't.
+What is running, how many players are on it, and what should be running but
+isn't.
 
 ```
 mynetwork · port 25565 · modern forwarding
 
-SERVICE   STATE    HEALTH   UPTIME
-proxy     running  healthy  2 hours
-lobby-1   running  healthy  2 hours
-lobby-2   running  healthy  2 hours
+SERVICE   STATE    HEALTH   PLAYERS  UPTIME
+proxy     running  healthy  -        2 hours
+lobby-1   running  healthy  12/20    2 hours
+lobby-2   running  healthy  3/20     2 hours
+
+  15 players online
 
   not running: survival
   try: cloud logs survival
+```
+
+Player counts come from each backend's `list` command over RCON. The proxy has
+no RCON, so it shows `-`, as does a server that is still starting or does not
+answer within 10 seconds. A server that cannot be asked never fails `status`.
+
+#### `cloud status --json`
+
+The same information as JSON on stdout and nothing else, for scripts and
+monitoring:
+
+```json
+{
+  "version": 1,
+  "network": "mynetwork",
+  "entry_port": 25565,
+  "forwarding": "modern",
+  "services": [
+    {
+      "name": "lobby-1",
+      "group": "lobby",
+      "state": "running",
+      "health": "healthy",
+      "uptime": "2 hours",
+      "players": { "online": 12, "max": 20, "names": ["alice", "bob"] }
+    }
+  ],
+  "missing": ["survival"]
+}
+```
+
+`version` is the version of this format. It is bumped if a field changes
+meaning or is removed; new fields may appear without a bump. `group` is `null`
+for the proxy. `health` and `players` are `null` when unknown.
+
+```sh
+cloud status --json | jq '[.services[].players.online // 0] | add'
 ```
 
 ### `cloud logs [server] [-f]`

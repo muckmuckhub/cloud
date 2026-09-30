@@ -10,9 +10,10 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
-import { CloudConfigSchema, hostPort } from "@cloud/schema";
+import { CloudConfigSchema, hostPort, memoryMiB } from "@cloud/schema";
 import { generatedFiles, rollingPlan } from "../packages/cli/src/plan.ts";
 import {
+  hangarUrl,
   hostDirs,
   hostPluginDir,
   instanceNames,
@@ -62,9 +63,29 @@ for (const example of await readdir(examplesDir)) {
   const compose = parseYaml(renderCompose(cfg)) as {
     services: Record<
       string,
-      { ports?: string[]; environment?: Record<string, string>; volumes?: string[] }
+      {
+        ports?: string[];
+        environment?: Record<string, string>;
+        volumes?: string[];
+        mem_limit?: string;
+      }
     >;
   };
+
+  // A capped container whose cap does not exceed its heap is OOM-killed as
+  // soon as the heap fills — a crash loop with nothing in the server log.
+  const badLimits = Object.entries(compose.services)
+    .filter(([, s]) => {
+      const heap = s.environment?.MEMORY;
+      if (!s.mem_limit || !heap) return true;
+      return memoryMiB(s.mem_limit) <= memoryMiB(heap);
+    })
+    .map(([n, s]) => `${n} (${s.mem_limit ?? "none"} vs heap ${s.environment?.MEMORY})`);
+  check(
+    "every service has a memory cap above its heap",
+    badLimits.length === 0,
+    badLimits.join(", "),
+  );
 
   const published = Object.entries(compose.services)
     .filter(([, s]) => s.ports?.length)
@@ -416,6 +437,23 @@ console.log("\npresets");
         opened.length <= 1 && (opened[0] ?? "proxy") === "proxy",
         opened.join(", "),
       );
+
+      // A plugin reference that validates but never reaches the container is
+      // the template bug again: accepted, rendered nowhere, no error.
+      const env = (
+        parseYaml(renderCompose(ok.data)) as {
+          services: Record<string, { environment?: Record<string, string> }>;
+        }
+      ).services.lobby?.environment ?? {};
+      const plugins = (env.PLUGINS ?? "").split(",");
+      const modrinth = (env.MODRINTH_PROJECTS ?? "").split(",");
+      const lost = [
+        ...(preset.allGroupHangar ?? []).filter(
+          (r) => !plugins.includes(hangarUrl(r, "PAPER")),
+        ),
+        ...(preset.allGroupModrinth ?? []).filter((r) => !modrinth.includes(r)),
+      ];
+      check(`${name} plugin references reach the container`, lost.length === 0, lost.join(", "));
     }
     // Applying twice must be a no-op, or `cloud add` would duplicate plugins.
     if (ok.success && !preset.groups) {

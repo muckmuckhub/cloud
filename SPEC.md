@@ -3,7 +3,9 @@
 **Version 1.**
 
 Changelog: `network.storage`, `proxy.ports` and `proxy.env` added in tool
-0.1.0 (all additive and optional; spec version unchanged).
+0.1.0. `memory_limit`, `modrinth` and `hangar` added to `[proxy]` and
+`[groups.<name>]` after 0.1.0. All additive and optional; spec version
+unchanged.
 
 This document is versioned separately from the tool. It exists so that the
 compatibility promise is a written contract rather than an implementation
@@ -76,7 +78,10 @@ breaks login or skins respectively.
 | `version` | string | `"3.4.0-SNAPSHOT"` | Not `latest` — that resolves to a 4.x snapshot. Pins Velocity only. |
 | `java` | int | derived | Override the container's Java version. |
 | `memory` | string | `"512m"` — `^\d+[MmGg]$` |
+| `memory_limit` | string | derived — container cap, must exceed `memory` |
 | `plugins` | string[] | `[]` — direct download URLs |
+| `modrinth` | string[] | `[]` — Modrinth `slug:version`, version required |
+| `hangar` | string[] | `[]` — Hangar `slug:version`, rendered for `VELOCITY` or `WATERFALL` |
 | `ports` | string[] | `[]` — extra published ports, Compose short syntax |
 | `env` | table | `{}` — extra container environment variables |
 
@@ -101,29 +106,37 @@ the README.
 |---|---|---|---|
 | `software` | enum | `"paper"` — also `folia`, `purpur`, `spigot` |
 | `version` | string | — | Required. `^\d+\.\d+(\.\d+)?$` |
-| `memory` | string | `"2G"` |
+| `memory` | string | `"2G"` | JVM heap. |
+| `memory_limit` | string | derived | Container cap: heap + max(heap/4, 512M). Must exceed `memory`. |
 | `java` | int | derived | Override the container's Java version. |
 | `min` | int | `1` | Instances to keep running. 0–50. |
 | `fallback` | bool | `false` | Players land here. Exactly one group must set it. |
 | `static` | bool | `false` | Own directory under `data/` instead of a volume; one instance only. |
 | `template` | string | — | Directory under `templates/` to seed from. See "Server files". |
-| `plugins` | string[] | `[]` |
+| `plugins` | string[] | `[]` | Direct download URLs. |
+| `modrinth` | string[] | `[]` | Modrinth `slug:version`. Resolved by the image at start, with required dependencies. |
+| `hangar` | string[] | `[]` | Hangar `slug:version`. Rendered to a download URL for the `PAPER` platform. |
 | `env` | table | `{}` | Extra container environment variables. |
+
+`modrinth` and `hangar` entries must carry a version. An unpinned reference
+would resolve to the newest release at every container start — the same drift
+that made `/latest/` URLs serve an HTML page instead of a jar.
 
 ### Cross-field rules
 
 1. Exactly one group has `fallback = true`.
 2. The fallback group has `min >= 1`.
 3. A `static` group cannot have `min > 1` — it owns a single world directory.
+4. `forwarding = "modern"` requires `proxy.software = "velocity"`.
+5. No entry in `proxy.ports` may republish `network.entry_port` on TCP, or
+   collide with another entry on the same host port and protocol.
+6. `memory_limit`, where set on the proxy or a group, is larger than `memory`.
 
 `static` does **not** mean "persistent as opposed to disposable": every group
 keeps its data across restarts, in a named volume by default. `static` chooses
 where that data lives (`./data/<name>` under `storage = "bind"`, browsable and
 easy to back up) and limits the group to one instance. There is no ephemeral
 group kind; instances are rebuilt from their template, not discarded.
-4. `forwarding = "modern"` requires `proxy.software = "velocity"`.
-5. No entry in `proxy.ports` may republish `network.entry_port` on TCP, or
-   collide with another entry on the same host port and protocol.
 
 ### Failover and rolling updates
 

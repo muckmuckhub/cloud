@@ -11,11 +11,15 @@ export class DockerError extends Error {}
 export async function compose(
   root: string,
   args: string[],
-  opts: { context?: string; stdio?: "inherit" | "pipe" } = {},
+  opts: { context?: string; stdio?: "inherit" | "pipe"; timeoutMs?: number } = {},
 ): Promise<{ code: number; stdout: string }> {
   const base = opts.context ? ["--context", opts.context] : [];
   const argv = [...base, "compose", ...args];
-  return run("docker", argv, { cwd: root, stdio: opts.stdio ?? "inherit" });
+  return run("docker", argv, {
+    cwd: root,
+    stdio: opts.stdio ?? "inherit",
+    timeoutMs: opts.timeoutMs,
+  });
 }
 
 export async function docker(
@@ -29,7 +33,7 @@ export async function docker(
 function run(
   cmd: string,
   args: string[],
-  opts: { cwd?: string; stdio: "inherit" | "pipe" },
+  opts: { cwd?: string; stdio: "inherit" | "pipe"; timeoutMs?: number },
 ): Promise<{ code: number; stdout: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
@@ -38,6 +42,21 @@ function run(
       // Prevents a console window flashing on Windows for piped calls.
       windowsHide: true,
     });
+    // Killing the child, not just giving up on it: an abandoned `compose exec`
+    // keeps its pipes open and the CLI would hang on exit anyway.
+    const timer = opts.timeoutMs
+      ? setTimeout(() => {
+          child.kill();
+          reject(
+            new DockerError(
+              `\`docker ${args.join(" ")}\` did not finish within ${Math.round(
+                opts.timeoutMs! / 1000,
+              )}s.`,
+            ),
+          );
+        }, opts.timeoutMs)
+      : undefined;
+    child.on("close", () => clearTimeout(timer));
     let stdout = "";
     let stderr = "";
     child.stdout?.on("data", (d) => (stdout += d));
@@ -277,11 +296,40 @@ export async function rcon(
   service: string,
   command: string,
   context?: string,
+  timeoutMs?: number,
 ): Promise<string> {
   const { stdout } = await compose(
     root,
     ["exec", "-T", service, "rcon-cli", command],
-    { context, stdio: "pipe" },
+    { context, stdio: "pipe", timeoutMs },
   );
   return stdout.trim();
+}
+
+export interface PlayerList {
+  online: number;
+  max: number;
+  names: string[];
+}
+
+/**
+ * Parses the reply to `list`:
+ *   There are 3 of a max of 20 players online: alice, bob, carol
+ *
+ * Returns null for anything else rather than guessing: a plugin that rewrites
+ * the message, or a server still booting, is "unknown", not "0 players".
+ * Colour codes are stripped — both the § codes a server may send and the ANSI
+ * escapes rcon-cli translates them to.
+ */
+export function parsePlayerList(out: string): PlayerList | null {
+  const plain = out.replace(/\x1b\[[0-9;]*m/g, "").replace(/§./g, "").trim();
+  const m = /There are (\d+) (?:of a max(?: of)?|out of maximum) (\d+) players online\.?:?\s*(.*)$/s.exec(
+    plain,
+  );
+  if (!m) return null;
+  const names = m[3]
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean);
+  return { online: Number(m[1]), max: Number(m[2]), names };
 }

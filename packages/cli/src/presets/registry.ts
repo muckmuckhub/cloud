@@ -43,10 +43,7 @@ const VIAVERSION: Preset = {
   // user as a crash-looping server, not as a download error. `bun run links`
   // checks these still resolve to a jar; refresh with
   //   curl https://hangar.papermc.io/api/v1/projects/ViaVersion/latestrelease
-  allGroupPlugins: [
-    "https://hangar.papermc.io/api/v1/projects/ViaVersion/versions/5.11.0/PAPER/download",
-    "https://hangar.papermc.io/api/v1/projects/ViaBackwards/versions/5.11.0/PAPER/download",
-  ],
+  allGroupHangar: ["ViaVersion:5.11.0", "ViaBackwards:5.11.0"],
   notes: [
     "Install on the BACKENDS, not the proxy — Velocity handles protocol translation poorly.",
     "ViaBackwards lets older clients in; ViaRewind (not included) goes further back than 1.8.",

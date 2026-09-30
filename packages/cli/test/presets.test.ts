@@ -22,7 +22,13 @@ describe("every registered preset", () => {
     const preset = PRESETS[name];
     expect(preset.description.length).toBeGreaterThan(0);
     // A preset that installs jars must say where they come from.
-    if (preset.proxyPlugins?.length || preset.allGroupPlugins?.length) {
+    const refs = [
+      ...(preset.proxyModrinth ?? []),
+      ...(preset.proxyHangar ?? []),
+      ...(preset.allGroupModrinth ?? []),
+      ...(preset.allGroupHangar ?? []),
+    ];
+    if (preset.proxyPlugins?.length || preset.allGroupPlugins?.length || refs.length) {
       expect(preset.docs).toBeTruthy();
     }
   });
@@ -157,5 +163,39 @@ describe("geyser", () => {
 
   test("no longer tells the user to hand-edit the compose file", () => {
     expect(PRESETS.geyser.notes?.join(" ")).not.toContain("docker-compose.yml");
+  });
+});
+
+describe("plugin references in presets", () => {
+  const preset: Preset = {
+    name: "refs",
+    description: "fixture",
+    proxyModrinth: ["a:1"],
+    proxyHangar: ["B:2"],
+    allGroupModrinth: ["c:3"],
+    allGroupHangar: ["D:4"],
+  };
+
+  test("are merged into the proxy and every group", () => {
+    const out = applyPreset(config(), preset);
+    expect(out.proxy.modrinth).toEqual(["a:1"]);
+    expect(out.proxy.hangar).toEqual(["B:2"]);
+    expect(out.groups.lobby.modrinth).toEqual(["c:3"]);
+    expect(out.groups.lobby.hangar).toEqual(["D:4"]);
+  });
+
+  test("apply twice with no duplicates", () => {
+    const once = CloudConfigSchema.parse(applyPreset(config(), preset));
+    expect(applyPreset(once, preset)).toEqual(once);
+  });
+
+  test("a group added by a preset still validates with no references", () => {
+    const out = applyPreset(config(), {
+      name: "x",
+      description: "x",
+      groups: { extra: {} },
+    });
+    expect(out.groups.extra.modrinth).toEqual([]);
+    expect(CloudConfigSchema.safeParse(out).success).toBe(true);
   });
 });

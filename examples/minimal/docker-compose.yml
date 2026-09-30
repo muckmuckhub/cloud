@@ -6,6 +6,7 @@ services:
     image: itzg/mc-proxy:java21
     container_name: example-proxy
     restart: unless-stopped
+    mem_limit: 1024m
     environment:
       TYPE: "VELOCITY"
       MEMORY: "512m"
@@ -31,6 +32,7 @@ services:
     image: itzg/minecraft-server:java21
     container_name: example-lobby
     restart: unless-stopped
+    mem_limit: 2560m
     environment:
       EULA: "TRUE"
       TYPE: "PAPER"
@@ -68,6 +70,7 @@ services:
     image: itzg/minecraft-server:java21
     container_name: example-survival
     restart: unless-stopped
+    mem_limit: 5120m
     environment:
       EULA: "TRUE"
       TYPE: "PAPER"

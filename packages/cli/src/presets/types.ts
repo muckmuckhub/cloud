@@ -21,8 +21,20 @@ export interface Preset {
    * Only the proxy may publish ports; a preset cannot open one on a backend.
    */
   proxyPorts?: string[];
+  /** Modrinth `slug:version` references appended to the proxy. */
+  proxyModrinth?: string[];
+  /** Hangar `slug:version` references appended to the proxy. */
+  proxyHangar?: string[];
   /** Plugin URLs appended to every existing group. */
   allGroupPlugins?: string[];
+  /** Modrinth `slug:version` references appended to every existing group. */
+  allGroupModrinth?: string[];
+  /**
+   * Hangar `slug:version` references appended to every existing group.
+   * Preferred over a hand-built Hangar URL: the version is the whole reference,
+   * so there is no path that can quietly start 404ing.
+   */
+  allGroupHangar?: string[];
   /** Environment variables merged into every existing group. */
   allGroupEnv?: Record<string, string>;
   /** Environment merged into the proxy. */
@@ -50,6 +62,12 @@ export function applyPreset(cfg: CloudConfig, preset: Preset): CloudConfig {
   if (preset.proxyPlugins?.length) {
     next.proxy.plugins = mergeUnique(next.proxy.plugins, preset.proxyPlugins);
   }
+  if (preset.proxyModrinth?.length) {
+    next.proxy.modrinth = mergeUnique(next.proxy.modrinth, preset.proxyModrinth);
+  }
+  if (preset.proxyHangar?.length) {
+    next.proxy.hangar = mergeUnique(next.proxy.hangar, preset.proxyHangar);
+  }
   if (preset.proxyPorts?.length) {
     next.proxy.ports = mergeUnique(next.proxy.ports, preset.proxyPorts);
   }
@@ -63,6 +81,12 @@ export function applyPreset(cfg: CloudConfig, preset: Preset): CloudConfig {
     const group = next.groups[groupName];
     if (preset.allGroupPlugins?.length) {
       group.plugins = mergeUnique(group.plugins, preset.allGroupPlugins);
+    }
+    if (preset.allGroupModrinth?.length) {
+      group.modrinth = mergeUnique(group.modrinth, preset.allGroupModrinth);
+    }
+    if (preset.allGroupHangar?.length) {
+      group.hangar = mergeUnique(group.hangar, preset.allGroupHangar);
     }
     if (preset.allGroupEnv) {
       // Existing values win — a preset must never silently change something
@@ -92,6 +116,8 @@ export function applyPreset(cfg: CloudConfig, preset: Preset): CloudConfig {
       fallback: false,
       static: false,
       plugins: [],
+      modrinth: [],
+      hangar: [],
       env: {},
       ...rest,
       version,

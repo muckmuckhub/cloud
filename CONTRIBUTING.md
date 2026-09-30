@@ -13,6 +13,8 @@ const MY_PRESET: Preset = {
   docs: "https://link-to-what-this-installs",
   proxyPlugins: ["https://..."],
   allGroupPlugins: ["https://..."],
+  allGroupHangar: ["ViaVersion:5.11.0"],   // preferred over URLs: slug:version
+  allGroupModrinth: ["some-plugin:1.2.3"],
   allGroupEnv: { SOME_SETTING: "value" },
   proxyEnv: { SOME_SETTING: "value" },
   proxyPorts: ["19132:19132/udp"],   // proxy only; backends never publish

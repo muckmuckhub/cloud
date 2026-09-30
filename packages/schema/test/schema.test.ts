@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CloudConfigSchema, hostPort } from "../src/index.ts";
+import { CloudConfigSchema, containerLimitMiB, hostPort, memoryMiB } from "../src/index.ts";
 
 /** Shorthand: parse and return the issue messages, joined. */
 function issues(input: unknown): string {
@@ -201,5 +201,74 @@ describe("unknown fields", () => {
       network: { name: "test", enable_rockets: true },
     });
     expect("enable_rockets" in cfg.network).toBe(false);
+  });
+});
+
+describe("memory_limit", () => {
+  test("is optional and derived when unset", () => {
+    const cfg = CloudConfigSchema.parse(minimal);
+    expect(cfg.groups.lobby.memory_limit).toBeUndefined();
+    expect(containerLimitMiB(cfg.groups.lobby.memory)).toBe(2560);
+  });
+
+  test("must be larger than the heap, or the container is OOM-killed", () => {
+    const msg = issues({
+      ...minimal,
+      groups: { lobby: { version: "1.21.10", fallback: true, memory: "4G", memory_limit: "4096M" } },
+    });
+    expect(msg).toContain("groups.lobby.memory_limit");
+    expect(msg).toContain("must be larger than memory");
+  });
+
+  test("is checked on the proxy too", () => {
+    const msg = issues({ ...minimal, proxy: { memory: "1G", memory_limit: "512M" } });
+    expect(msg).toContain("proxy.memory_limit");
+  });
+
+  test("accepts a cap above the heap", () => {
+    expect(
+      issues({
+        ...minimal,
+        groups: { lobby: { version: "1.21.10", fallback: true, memory: "4G", memory_limit: "6G" } },
+      }),
+    ).toBe("");
+  });
+
+  test("memoryMiB reads both unit cases", () => {
+    expect(memoryMiB("512m")).toBe(512);
+    expect(memoryMiB("512M")).toBe(512);
+    expect(memoryMiB("4G")).toBe(4096);
+    expect(memoryMiB("2g")).toBe(2048);
+  });
+});
+
+describe("plugin references", () => {
+  const withRefs = (modrinth: string[], hangar: string[] = []) => ({
+    ...minimal,
+    groups: { lobby: { version: "1.21.10", fallback: true, modrinth, hangar } },
+  });
+
+  test("default to empty lists", () => {
+    const cfg = CloudConfigSchema.parse(minimal);
+    expect(cfg.groups.lobby.modrinth).toEqual([]);
+    expect(cfg.groups.lobby.hangar).toEqual([]);
+    expect(cfg.proxy.modrinth).toEqual([]);
+    expect(cfg.proxy.hangar).toEqual([]);
+  });
+
+  test("accept pinned slug:version references", () => {
+    expect(
+      issues(withRefs(["luckperms:v5.5.71-bukkit", "fabric-api:0.119.2+1.21.4"], ["ViaVersion:5.11.0"])),
+    ).toBe("");
+  });
+
+  test("reject an unpinned reference, which drifts at every start", () => {
+    expect(issues(withRefs(["luckperms"]))).toContain("pinned version");
+    expect(issues(withRefs([], ["ViaVersion"]))).toContain("pinned version");
+  });
+
+  test("reject a URL, which belongs in plugins", () => {
+    expect(issues(withRefs(["https://cdn.modrinth.com/x.jar"]))).toContain("groups.lobby.modrinth");
+    expect(issues(withRefs([], ["https://hangar.papermc.io/x"]))).toContain("groups.lobby.hangar");
   });
 });
