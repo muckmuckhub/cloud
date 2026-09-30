@@ -24,7 +24,25 @@ export interface ForwardingWiring {
   bungeeEnabled: boolean;
   /** The proxy needs backends configured for BungeeCord-style forwarding. */
   legacyStyle: boolean;
+  /**
+   * Backends check a BungeeGuard token. The plugin is installed, and its
+   * `allowed-tokens` set to the forwarding secret, by this tool.
+   */
+  guard: boolean;
+  /** Proxy-Compatible-Forge's name for this mode, on NeoForge servers. */
+  pcfMode: "MODERN" | "BUNGEEGUARD" | "LEGACY";
 }
+
+/**
+ * BungeeGuard, pinned. One jar serves BungeeCord/Waterfall and Paper alike;
+ * Velocity has it built in (`player-info-forwarding-mode = "bungeeguard"`)
+ * and needs no jar. Installed automatically because the mode is meaningless
+ * without it: backends without the plugin accept any forwarded identity, which
+ * is exactly `legacy` with a token nobody checks. `bun run links` verifies the
+ * URL; refresh from https://github.com/lucko/BungeeGuard/releases
+ */
+export const BUNGEEGUARD_JAR =
+  "https://github.com/lucko/BungeeGuard/releases/download/v1.4.0/BungeeGuard.jar";
 
 export function wiringFor(forwarding: CloudConfig["network"]["forwarding"]): ForwardingWiring {
   switch (forwarding) {
@@ -36,6 +54,8 @@ export function wiringFor(forwarding: CloudConfig["network"]["forwarding"]): For
         velocityEnabled: true,
         bungeeEnabled: false,
         legacyStyle: false,
+        guard: false,
+        pcfMode: "MODERN",
       };
     case "bungeeguard":
       // BungeeCord-style forwarding plus a token the BungeeGuard plugin checks.
@@ -46,6 +66,8 @@ export function wiringFor(forwarding: CloudConfig["network"]["forwarding"]): For
         velocityEnabled: false,
         bungeeEnabled: true,
         legacyStyle: true,
+        guard: true,
+        pcfMode: "BUNGEEGUARD",
       };
     case "legacy":
       // No secret at all. Safe only because backends publish no port.
@@ -54,14 +76,8 @@ export function wiringFor(forwarding: CloudConfig["network"]["forwarding"]): For
         velocityEnabled: false,
         bungeeEnabled: true,
         legacyStyle: true,
-      };
-    case "none":
-      // Rejected by the schema; handled so this stays a total function.
-      return {
-        usesSecret: false,
-        velocityEnabled: false,
-        bungeeEnabled: false,
-        legacyStyle: false,
+        guard: false,
+        pcfMode: "LEGACY",
       };
   }
 }

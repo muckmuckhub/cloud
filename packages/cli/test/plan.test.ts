@@ -6,8 +6,12 @@ import {
   createHostDirs,
   emptyTemplates,
   generatedFiles,
+  memoryBudget,
+  memoryWarning,
   plan,
   renderDiff,
+  seedBungeeGuard,
+  seedNeoForge,
   summarise,
   writeChanges,
 } from "../src/plan.ts";
@@ -245,5 +249,135 @@ describe("renderDiff", () => {
 
   test("summarise says so when there is nothing to do", () => {
     expect(summarise("/root", [])).toContain("No changes");
+  });
+});
+
+describe("memoryBudget", () => {
+  test("adds every instance's heap and cap, proxy included", () => {
+    const b = memoryBudget(
+      config({ groups: { lobby: { version: "1.21.10", fallback: true, min: 2, memory: "1G" } } }),
+    );
+    // proxy 512m heap / 1024m cap; two lobbies at 1024m heap / 1536m cap.
+    expect(b).toEqual({ heapMiB: 512 + 2 * 1024, capMiB: 1024 + 2 * 1536 });
+  });
+
+  test("honours memory_limit overrides", () => {
+    const b = memoryBudget(
+      config({ groups: { lobby: { version: "1.21.10", fallback: true, memory_limit: "8G" } } }),
+    );
+    expect(b.capMiB).toBe(1024 + 8192);
+  });
+});
+
+describe("memoryWarning", () => {
+  test("is silent when everything fits", () => {
+    expect(memoryWarning({ heapMiB: 2048, capMiB: 3072 }, 4096)).toBeNull();
+  });
+
+  test("is silent when the engine size is unknown", () => {
+    expect(memoryWarning({ heapMiB: 2048, capMiB: 3072 }, 0)).toBeNull();
+  });
+
+  test("warns when the caps exceed the engine, naming both sizes", () => {
+    const msg = memoryWarning({ heapMiB: 3072, capMiB: 5120 }, 4096) ?? "";
+    expect(msg).toContain("5.0G");
+    expect(msg).toContain("4.0G");
+    expect(msg).toContain("137");
+  });
+
+  test("says so plainly when even the heaps do not fit", () => {
+    const msg = memoryWarning({ heapMiB: 6144, capMiB: 8192 }, 4096) ?? "";
+    expect(msg).toContain("heaps alone (6.0G) do not fit");
+  });
+});
+
+describe("seedBungeeGuard", () => {
+  const cfg = config({
+    network: { name: "test", forwarding: "bungeeguard" },
+    groups: { lobby: { version: "1.21.10", fallback: true, min: 2 } },
+  });
+
+  test("gives every backend a config before its first boot", async () => {
+    await withTempDir(async (dir) => {
+      const seeded = await seedBungeeGuard(dir, cfg);
+      expect(seeded).toHaveLength(2);
+      const body = await readFile(
+        join(dir, "data", "lobby-1", "plugins", "BungeeGuard", "config.yml"),
+        "utf8",
+      );
+      expect(body).toContain("allowed-tokens: []");
+    });
+  });
+
+  test("never overwrites a config that is already there", async () => {
+    await withTempDir(async (dir) => {
+      const file = join(dir, "data", "lobby-1", "plugins", "BungeeGuard", "config.yml");
+      await mkdir(join(file, ".."), { recursive: true });
+      await writeFile(file, "mine\n");
+      const seeded = await seedBungeeGuard(dir, cfg);
+      expect(seeded).toHaveLength(1);
+      expect(await readFile(file, "utf8")).toBe("mine\n");
+    });
+  });
+});
+
+describe("seedBungeeGuard with a template", () => {
+  test("leaves seeding to a template that ships the config", async () => {
+    await withTempDir(async (dir) => {
+      const tpl = join(dir, "templates", "hub", "plugins", "BungeeGuard");
+      await mkdir(tpl, { recursive: true });
+      await writeFile(join(tpl, "config.yml"), "invalid-token-kick-message: x\n");
+      const seeded = await seedBungeeGuard(
+        dir,
+        config({
+          network: { name: "test", forwarding: "bungeeguard" },
+          groups: { lobby: { version: "1.21.10", fallback: true, template: "hub" } },
+        }),
+      );
+      expect(seeded).toEqual([]);
+      expect(existsSync(join(dir, "data", "lobby", "plugins", "BungeeGuard"))).toBe(false);
+    });
+  });
+
+  test("still seeds when the template has no BungeeGuard config", async () => {
+    await withTempDir(async (dir) => {
+      await mkdir(join(dir, "templates", "hub"), { recursive: true });
+      const seeded = await seedBungeeGuard(
+        dir,
+        config({
+          network: { name: "test", forwarding: "bungeeguard" },
+          groups: { lobby: { version: "1.21.10", fallback: true, template: "hub" } },
+        }),
+      );
+      expect(seeded).toHaveLength(1);
+    });
+  });
+});
+
+describe("seedNeoForge", () => {
+  const cfg = config({
+    groups: {
+      lobby: { version: "1.21.10", fallback: true },
+      modded: { software: "neoforge", version: "1.21.1" },
+    },
+  });
+
+  test("seeds Proxy-Compatible-Forge's config on the host before first boot", async () => {
+    await withTempDir(async (dir) => {
+      expect(await seedNeoForge(dir, cfg)).toHaveLength(1);
+      const body = await readFile(
+        join(dir, "data", "modded", "config", "proxy-compatible-forge.toml"),
+        "utf8",
+      );
+      expect(body).toContain("[forwarding]");
+    });
+  });
+
+  test("never overwrites, and leaves paper groups alone", async () => {
+    await withTempDir(async (dir) => {
+      await seedNeoForge(dir, cfg);
+      expect(await seedNeoForge(dir, cfg)).toEqual([]);
+      expect(existsSync(join(dir, "data", "lobby", "config"))).toBe(false);
+    });
   });
 });

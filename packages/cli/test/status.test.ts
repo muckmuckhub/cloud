@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parsePlayerList } from "../src/docker.ts";
+import { dockerEnv, parsePlayerList, uptimeFrom } from "../src/docker.ts";
 
 describe("parsePlayerList", () => {
   test("reads counts and names", () => {
@@ -34,5 +34,33 @@ describe("parsePlayerList", () => {
     expect(parsePlayerList("")).toBeNull();
     expect(parsePlayerList("Unknown command")).toBeNull();
     expect(parsePlayerList("Players: 3")).toBeNull();
+  });
+});
+
+describe("uptimeFrom", () => {
+  test.each([
+    ["Up 2 hours (healthy)", "2 hours"],
+    ["Up About a minute (health: starting)", "About a minute"],
+    ["Up 19 minutes", "19 minutes"],
+    ["Up 3 days (unhealthy)", "3 days"],
+  ])("%s -> %s", (status, want) => {
+    expect(uptimeFrom(status)).toBe(want);
+  });
+
+  test("a container that is not up has no uptime", () => {
+    expect(uptimeFrom("Exited (1) 3 minutes ago")).toBe("-");
+    expect(uptimeFrom("Restarting (1) 5 seconds ago")).toBe("-");
+    expect(uptimeFrom("")).toBe("-");
+  });
+});
+
+describe("dockerEnv", () => {
+  test("never passes the forwarding secret, so Compose reads the current one from .env", () => {
+    // Bun loads .env into process.env at startup; a rotation then left the
+    // old value in the shell environment, where it overrode the new .env.
+    const env = dockerEnv({ PATH: "/bin", FORWARDING_SECRET: "stale", DOCKER_HOST: "x" });
+    expect(env.FORWARDING_SECRET).toBeUndefined();
+    expect(env.PATH).toBe("/bin");
+    expect(env.DOCKER_HOST).toBe("x");
   });
 });

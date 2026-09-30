@@ -166,7 +166,7 @@ async function manualWizard(): Promise<CloudConfig> {
       online: true,
     },
     // No version here on purpose: the schema's default is a pinned 3.x
-    // release. "latest" resolves to a Velocity 4.0.0 snapshot that needs
+    // release. "latest" resolves to a Velocity 4.x snapshot that needs
     // Java 25 and is a dev build — never the right default.
     proxy: { software: "velocity", memory: "512m" },
     groups,

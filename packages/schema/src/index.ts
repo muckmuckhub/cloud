@@ -56,6 +56,54 @@ export function containerLimitMiB(heap: string, limit?: string): number {
   return mib + Math.max(Math.ceil(mib / 4), 512);
 }
 
+/**
+ * Java major version per Minecraft version.
+ *
+ * Getting this wrong produces UnsupportedClassVersionError with a class file
+ * number rather than a Java version, which is why the mapping lives in one
+ * place with the numbers written down:
+ *   class 52=Java 8, 61=17, 65=21, 69=25.
+ */
+export function javaFor(mcVersion: string): number {
+  const [major, minor] = mcVersion.split(".").map(Number);
+  // Minecraft moved to year-based versioning (26.1). Those need Java 25.
+  if (major >= 26) return 25;
+  if (major !== 1) return 25;
+  if (minor >= 21) return 21;
+  if (minor >= 18) return 17;
+  if (minor >= 17) return 16;
+  return 8;
+}
+
+/**
+ * Velocity 4.x requires Java 25; 3.x runs on 17+. "latest" resolves to a
+ * 4.x snapshot, so an unpinned proxy silently needs a newer runtime than
+ * the image provides.
+ */
+export function proxyJavaFor(software: string, version: string): number {
+  if (software !== "velocity") return 17;
+  if (/^4\./.test(version)) return 25;
+  if (version === "latest") return 25; // latest is currently a 4.x snapshot
+  return 21;
+}
+
+/**
+ * An image pin: the tag the digest was taken from, then the digest.
+ *
+ * The tag is part of the value on purpose. With a digest present Docker
+ * ignores the tag entirely, so a bare digest would keep running a Java 21
+ * image after `version` moved to a Minecraft that needs 25 — the
+ * UnsupportedClassVersionError this tool exists to prevent. Naming the tag
+ * lets validation notice that the pin no longer matches.
+ */
+const IMAGE_PIN = z
+  .string()
+  .regex(
+    /^java\d+@sha256:[a-f0-9]{64}$/,
+    'must look like "java21@sha256:<64 hex digits>" — the image tag, then its digest',
+  )
+  .describe("Optional image digest pin, as <java tag>@sha256:<digest>. Leave unset normally.");
+
 const MC_VERSION = z
   .string()
   .regex(/^\d+\.\d+(\.\d+)?$/, "must look like 1.21.10")
@@ -115,9 +163,81 @@ const HANGAR_REFS = z
   .default([])
   .describe("Plugins from Hangar (hangar.papermc.io), as slug:version");
 
-export const ProxySoftware =z.enum(["velocity", "bungeecord", "waterfall"]);
-export const ServerSoftware = z.enum(["paper", "folia", "purpur", "spigot"]);
-export const Forwarding = z.enum(["modern", "legacy", "bungeeguard", "none"]);
+export const ProxySoftware = z.enum(["velocity", "bungeecord", "waterfall"]);
+export const ServerSoftware = z.enum([
+  "paper",
+  "folia",
+  "purpur",
+  "spigot",
+  "fabric",
+  "neoforge",
+]);
+
+/**
+ * Whether a server runs Bukkit plugins. Fabric and NeoForge run mods instead:
+ * a plugin jar dropped into one is not loaded, and Hangar serves only plugins.
+ */
+export function runsPlugins(software: string): boolean {
+  return software !== "fabric" && software !== "neoforge";
+}
+
+/**
+ * Proxy-Compatible-Forge, pinned. It is what lets a NeoForge server trust the
+ * proxy, for all three forwarding modes. Unlike FabricProxy-Lite one release
+ * covers every Minecraft version. Refresh from
+ * https://modrinth.com/mod/proxy-compatible-forge/versions
+ */
+export const PROXY_COMPATIBLE_FORGE = "1.3.1";
+
+/**
+ * The FabricProxy-Lite release for a Minecraft version, or null if none is
+ * known. FabricProxy-Lite is what lets a Fabric server accept Velocity's
+ * modern forwarding, and it is released per range of Minecraft versions — so
+ * one pin cannot cover them all, and a table keeps every one of them pinned.
+ * Refresh from https://modrinth.com/mod/fabricproxy-lite/versions
+ */
+export const FABRIC_PROXY_LITE: { from: string; to: string; version: string }[] = [
+  { from: "1.21", to: "1.21.8", version: "v2.10.1" },
+  { from: "1.21.9", to: "1.21.11", version: "v2.11.0" },
+  // A bound without a patch number covers every patch of it: 26.3 is 26.3.x.
+  { from: "26.1", to: "26.3", version: "v2.12.0" },
+];
+
+/** "1.21.10" -> 1021010, for range comparison. A missing patch is 0. */
+function versionKey(v: string): number {
+  const [major = 0, minor = 0, patch = 0] = v.split(".").map(Number);
+  return major * 1_000_000 + minor * 1_000 + patch;
+}
+
+export function fabricProxyLiteFor(mcVersion: string): string | null {
+  const v = versionKey(mcVersion);
+  const hit = FABRIC_PROXY_LITE.find(({ from, to }) => {
+    const upper = versionKey(to) + (to.split(".").length === 2 ? 999 : 0);
+    return v >= versionKey(from) && v <= upper;
+  });
+  return hit?.version ?? null;
+}
+
+/** A modrinth reference's slug, e.g. "fabricproxy-lite" from "fabricproxy-lite:v2.11.0". */
+export function refSlug(ref: string): string {
+  return ref.split(":")[0].toLowerCase();
+}
+/**
+ * There is no "none". It used to be listed here and rejected by a refinement,
+ * which meant the AI tool schema offered the model a choice that could never
+ * validate. It is still named in the error, because "none" is what people
+ * type when they want an offline-mode network.
+ */
+export const Forwarding = z.enum(["modern", "legacy", "bungeeguard"], {
+  errorMap: (issue, ctx) =>
+    issue.code === "invalid_enum_value" && ctx.data === "none"
+      ? {
+          message:
+            "forwarding = \"none\" gives every player an offline-mode UUID and lets anyone " +
+            "reach backends unauthenticated. Use \"modern\".",
+        }
+      : { message: `must be "modern", "legacy" or "bungeeguard"` },
+});
 
 const JAVA = z
   .number()
@@ -128,14 +248,15 @@ const JAVA = z
 
 export const ProxySchema = z.object({
   software: ProxySoftware.default("velocity"),
-  // NOT "latest": for Velocity that resolves to a 4.0.0 snapshot which needs
+  // NOT "latest": for Velocity that resolves to a 4.x snapshot which needs
   // Java 25 and is a dev build. Pin a stable release by default.
-  version: z.string().default("3.4.0-SNAPSHOT"),
+  version: z.string().default("3.5.1"),
   java: JAVA.optional().describe(
     "Override the Java version. Leave unset to derive it from the software version.",
   ),
   memory: MEMORY.default("512m"),
   memory_limit: MEMORY_LIMIT.optional(),
+  pin: IMAGE_PIN.optional(),
   plugins: z
     .array(z.string().url())
     .default([])
@@ -164,6 +285,7 @@ export const GroupSchema = z.object({
   ),
   memory: MEMORY.default("2G"),
   memory_limit: MEMORY_LIMIT.optional(),
+  pin: IMAGE_PIN.optional(),
   min: z
     .number()
     .int()
@@ -284,6 +406,36 @@ export const CloudConfigSchema = z
       }
     }
 
+    // A pin taken from a different Java tag than the one this config derives
+    // would run the wrong runtime, silently: the digest wins over the tag.
+    const pins: [(string | number)[], string | undefined, number][] = [
+      [
+        ["proxy", "pin"],
+        cfg.proxy.pin,
+        cfg.proxy.java ?? proxyJavaFor(cfg.proxy.software, cfg.proxy.version),
+      ],
+      ...Object.entries(cfg.groups).map(
+        ([name, g]) =>
+          [["groups", name, "pin"], g.pin, g.java ?? javaFor(g.version)] as [
+            string[],
+            string | undefined,
+            number,
+          ],
+      ),
+    ];
+    for (const [path, pin, java] of pins) {
+      const tag = pin?.split("@")[0];
+      if (tag && tag !== `java${java}`) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path,
+          message:
+            `pin is for ${tag}, but this config needs java${java}. Docker would run the ` +
+            `pinned ${tag} image regardless. Pin the java${java} image, or remove the pin.`,
+        });
+      }
+    }
+
     for (const [name, g] of Object.entries(cfg.groups)) {
       if (g.static && g.min > 1) {
         ctx.addIssue({
@@ -301,6 +453,56 @@ export const CloudConfigSchema = z
         });
       }
     }
+    for (const [name, g] of Object.entries(cfg.groups)) {
+      if (runsPlugins(g.software)) continue;
+      if (g.hangar.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["groups", name, "hangar"],
+          message:
+            `Hangar serves Paper plugins, which a ${g.software} server cannot load. ` +
+            "Use modrinth for mods.",
+        });
+      }
+      if (g.software === "neoforge") {
+        // Proxy-Compatible-Forge supports NeoForge from 1.20.1 on; before
+        // that there is no NeoForge at all.
+        const [major, minor, patch = 0] = g.version.split(".").map(Number);
+        if (major === 1 && (minor < 20 || (minor === 20 && patch < 1))) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["groups", name, "version"],
+            message: "NeoForge starts at Minecraft 1.20.1.",
+          });
+        }
+        continue;
+      }
+      // FabricProxy-Lite implements Velocity's modern forwarding and nothing
+      // else. Under legacy forwarding a Fabric server has no way to read the
+      // forwarded identity: every player would join with an offline UUID.
+      if (cfg.network.forwarding !== "modern") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["groups", name, "software"],
+          message:
+            `a fabric server needs forwarding = "modern" on a Velocity proxy — ` +
+            `FabricProxy-Lite, which lets it trust the proxy, supports nothing else.`,
+        });
+      }
+      const ownsProxyMod = g.modrinth.some((r) => refSlug(r) === "fabricproxy-lite");
+      if (!ownsProxyMod && !fabricProxyLiteFor(g.version)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["groups", name, "version"],
+          message:
+            `no known FabricProxy-Lite release for Minecraft ${g.version}, and a ` +
+            `fabric server behind a proxy needs one. Pick one from ` +
+            `https://modrinth.com/mod/fabricproxy-lite/versions and add it: ` +
+            `modrinth = ["fabricproxy-lite:<version>"]`,
+        });
+      }
+    }
+
     // Modern forwarding is a Velocity protocol. BungeeCord and Waterfall have
     // no implementation of it, and a proxy configured this way starts fine and
     // then rejects every login with "Unable to verify player identity" — the
@@ -311,8 +513,8 @@ export const CloudConfigSchema = z
         path: ["network", "forwarding"],
         message:
           `forwarding = "modern" only exists in Velocity, but proxy.software is ` +
-          `"${cfg.proxy.software}". Use forwarding = "bungeeguard" (recommended, ` +
-          `needs the BungeeGuard plugin on every backend) or "legacy" (only safe ` +
+          `"${cfg.proxy.software}". Use forwarding = "bungeeguard" (recommended; ` +
+          `cloud apply installs and configures BungeeGuard) or "legacy" (only safe ` +
           `if backends are unreachable from outside the Docker network).`,
       });
     }
@@ -341,16 +543,6 @@ export const CloudConfigSchema = z
       } else {
         seenPorts.set(key, mapping);
       }
-    }
-
-    if (cfg.network.forwarding === "none") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["network", "forwarding"],
-        message:
-          "forwarding = \"none\" gives every player an offline-mode UUID and lets anyone " +
-          "reach backends unauthenticated. Use \"modern\".",
-      });
     }
   });
 

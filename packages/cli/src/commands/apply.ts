@@ -2,14 +2,23 @@ import { loadConfig, requireRoot } from "../config.ts";
 import {
   createHostDirs,
   emptyTemplates,
+  memoryBudget,
+  memoryWarning,
   plan,
   rollingPlan,
+  seedBungeeGuard,
+  seedNeoForge,
   summarise,
   writeChanges,
 } from "../plan.ts";
-import { ensureSecret, readSecret, rotateSecret } from "../secret.ts";
+import { ensureSecret, readSecret, rotateSecret, writeProxyToken } from "../secret.ts";
 import { wiringFor } from "../render/forwarding.ts";
-import { compose, publishedPorts, waitForHealthy } from "../docker.ts";
+import {
+  compose,
+  engineMemoryMiB,
+  publishedPorts,
+  waitForHealthy,
+} from "../docker.ts";
 import { overrideFile, portWarnings } from "../overrides.ts";
 import { c, confirm, fail, info, sym, warn } from "../ui.ts";
 import { platformNotes } from "../platform.ts";
@@ -92,6 +101,13 @@ export async function apply(argv: string[]): Promise<void> {
     }
   }
 
+  // Before the confirmation, like the warning above: an oversized network
+  // starts fine and only fails an hour later, so this is the last moment the
+  // problem is visible. Silent if the engine cannot be asked.
+  const engineMiB = await engineMemoryMiB(context);
+  const tooBig = engineMiB && memoryWarning(memoryBudget(cfg), engineMiB);
+  if (tooBig) warn(tooBig);
+
   if (dryRun) {
     info(c.dim("--dry-run: stopping before writing."));
     return;
@@ -107,6 +123,21 @@ export async function apply(argv: string[]): Promise<void> {
   await writeChanges(root, changes);
   // Before compose, so the bind sources belong to the user and not to root.
   await createHostDirs(root, cfg);
+
+  for (const file of await seedNeoForge(root, cfg)) {
+    info(`${c.green(sym.ok)} seeded ${file}`);
+  }
+  if (wiring.guard) {
+    for (const file of await seedBungeeGuard(root, cfg)) {
+      info(`${c.green(sym.ok)} seeded ${file}`);
+    }
+    // Velocity reads the secret file itself; BungeeCord's plugin needs it in
+    // its own token.yml, rewritten every time so a rotation reaches it.
+    const secret = await readSecret(root);
+    if (secret && cfg.proxy.software !== "velocity") {
+      await writeProxyToken(root, secret);
+    }
+  }
 
   // After createHostDirs, so a template directory that did not exist has just
   // been made and shows up as empty rather than missing — same advice either

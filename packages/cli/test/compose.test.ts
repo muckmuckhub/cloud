@@ -10,6 +10,7 @@ import {
   proxyJavaFor,
   renderCompose,
 } from "../src/render/compose.ts";
+import { BUNGEEGUARD_JAR } from "../src/render/forwarding.ts";
 import { config } from "./helpers.ts";
 
 interface Service {
@@ -47,7 +48,7 @@ describe("javaFor", () => {
 
 describe("proxyJavaFor", () => {
   test("Velocity 3.x runs on 21", () => {
-    expect(proxyJavaFor("velocity", "3.4.0-SNAPSHOT")).toBe(21);
+    expect(proxyJavaFor("velocity", "3.5.1")).toBe(21);
   });
 
   test("Velocity 4.x needs 25", () => {
@@ -114,7 +115,7 @@ describe("ports", () => {
 describe("proxy environment", () => {
   test("velocity gets its version pinned", () => {
     expect(services(config()).proxy.environment?.VELOCITY_VERSION).toBe(
-      "3.4.0-SNAPSHOT",
+      "3.5.1",
     );
   });
 
@@ -558,5 +559,183 @@ describe("plugin references", () => {
       }),
     );
     expect(s.lobby.environment?.MODRINTH_DOWNLOAD_DEPENDENCIES).toBe("optional");
+  });
+});
+
+describe("image pins", () => {
+  const digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+  test("replace the tag with tag@digest", () => {
+    const s = services(
+      config({
+        proxy: { pin: `java21@${digest}` },
+        groups: { lobby: { version: "1.21.10", fallback: true, pin: `java21@${digest}` } },
+      }),
+    );
+    expect(s.proxy.image).toBe(`itzg/mc-proxy:java21@${digest}`);
+    expect(s.lobby.image).toBe(`itzg/minecraft-server:java21@${digest}`);
+  });
+
+  test("leave unpinned services on the plain tag", () => {
+    expect(services(config()).lobby.image).toBe("itzg/minecraft-server:java21");
+  });
+});
+
+describe("bungeeguard", () => {
+  const guarded = (software: "velocity" | "bungeecord") =>
+    services(
+      config({
+        network: { name: "test", forwarding: "bungeeguard" },
+        proxy: { software },
+      }),
+    );
+
+  test("installs the plugin on every backend", () => {
+    expect(guarded("velocity").lobby.environment?.PLUGINS).toContain(BUNGEEGUARD_JAR);
+  });
+
+  test("installs it on BungeeCord but not on Velocity, which has it built in", () => {
+    expect(guarded("bungeecord").proxy.environment?.PLUGINS).toContain(BUNGEEGUARD_JAR);
+    expect(guarded("velocity").proxy.environment?.PLUGINS).toBeUndefined();
+  });
+
+  test("does not duplicate a jar the user already listed", () => {
+    const s = services(
+      config({
+        network: { name: "test", forwarding: "bungeeguard" },
+        groups: { lobby: { version: "1.21.10", fallback: true, plugins: [BUNGEEGUARD_JAR] } },
+      }),
+    );
+    expect(s.lobby.environment?.PLUGINS).toBe(BUNGEEGUARD_JAR);
+  });
+
+  test("is not installed under other modes", () => {
+    expect(services(config()).lobby.environment?.PLUGINS).toBeUndefined();
+  });
+});
+
+describe("secret rotation", () => {
+  test("the proxy's environment references the secret, so Compose recreates it", () => {
+    expect(services(config()).proxy.environment?.CFG_FORWARDING_SECRET).toContain(
+      "${FORWARDING_SECRET",
+    );
+  });
+
+  test("no secret on the proxy when the mode has none", () => {
+    const s = services(
+      config({ network: { name: "test", forwarding: "legacy" }, proxy: { software: "bungeecord" } }),
+    );
+    expect(s.proxy.environment?.CFG_FORWARDING_SECRET).toBeUndefined();
+  });
+});
+
+describe("bungeeguard from a fork", () => {
+  test("a user-listed BungeeGuard.jar replaces the built-in one instead of doubling it", () => {
+    const fork = "https://example.com/fork/BungeeGuard.jar";
+    const s = services(
+      config({
+        network: { name: "test", forwarding: "bungeeguard" },
+        groups: { lobby: { version: "1.21.10", fallback: true, plugins: [fork] } },
+      }),
+    );
+    expect(s.lobby.environment?.PLUGINS).toBe(fork);
+  });
+});
+
+describe("proxy healthcheck port", () => {
+  test("BungeeCord and Waterfall are probed where they actually listen", () => {
+    for (const software of ["bungeecord", "waterfall"] as const) {
+      const s = services(
+        config({ network: { name: "test", forwarding: "legacy" }, proxy: { software } }),
+      );
+      expect(s.proxy.environment?.SERVER_PORT).toBe("25565");
+    }
+  });
+
+  test("Velocity needs no hint: the image reads velocity.toml's bind", () => {
+    expect(services(config()).proxy.environment?.SERVER_PORT).toBeUndefined();
+  });
+});
+
+describe("fabric servers", () => {
+  const withFabric = (over: Record<string, unknown> = {}) =>
+    services(
+      config({
+        groups: {
+          lobby: { version: "1.21.10", fallback: true },
+          survival: { software: "fabric", version: "1.21.10", ...over },
+        },
+      }),
+    );
+
+  test("get FabricProxy-Lite, pinned for their version, and the secret in the environment", () => {
+    const env = withFabric().survival.environment ?? {};
+    expect(env.TYPE).toBe("FABRIC");
+    expect(env.MODRINTH_PROJECTS).toBe("fabricproxy-lite:v2.11.0");
+    expect(env.MODRINTH_DOWNLOAD_DEPENDENCIES).toBe("required");
+    expect(env.FABRIC_PROXY_SECRET).toContain("${FORWARDING_SECRET");
+  });
+
+  test("get none of the Paper wiring", () => {
+    const svc = withFabric().survival;
+    expect(svc.environment?.PATCH_DEFINITIONS).toBeUndefined();
+    expect(svc.environment?.CFG_FORWARDING_SECRET).toBeUndefined();
+    expect(svc.volumes?.some((v) => v.includes(":/patches"))).toBe(false);
+  });
+
+  test("download plugins URLs as mods, and expose config/ on the host", () => {
+    const svc = withFabric({ plugins: ["https://example.com/mod.jar"] }).survival;
+    expect(svc.environment?.MODS).toBe("https://example.com/mod.jar");
+    expect(svc.environment?.PLUGINS).toBeUndefined();
+    expect(svc.volumes).toContain("./data/survival/config:/data/config");
+  });
+
+  test("a hand-listed FabricProxy-Lite replaces the built-in one", () => {
+    const env = withFabric({ modrinth: ["fabricproxy-lite:v2.10.0", "lithium:x"] }).survival
+      .environment;
+    expect(env?.MODRINTH_PROJECTS).toBe("fabricproxy-lite:v2.10.0,lithium:x");
+  });
+
+  test("leave the Paper lobby next to them untouched", () => {
+    const lobby = withFabric().lobby;
+    expect(lobby.environment?.PATCH_DEFINITIONS).toBe("/patches");
+    expect(lobby.volumes).toContain("./data/lobby/plugins:/data/plugins");
+  });
+});
+
+describe("neoforge servers", () => {
+  const withNeo = (network: Record<string, unknown> = {}) =>
+    services(
+      config({
+        network: { name: "test", ...network },
+        groups: {
+          lobby: { version: "1.21.10", fallback: true },
+          modded: { software: "neoforge", version: "1.21.1", modrinth: ["create:6.0.10+mc1.21.1"] },
+        },
+      }),
+    ).modded;
+
+  test("get Proxy-Compatible-Forge before their own mods", () => {
+    expect(withNeo().environment?.MODRINTH_PROJECTS).toBe(
+      "proxy-compatible-forge:1.3.1,create:6.0.10+mc1.21.1",
+    );
+  });
+
+  test("mount only their own patch directory", () => {
+    const patches = (withNeo().volumes ?? []).filter((v) => v.includes(":/patches"));
+    expect(patches).toEqual(["./proxy/patches/neoforge:/patches:ro"]);
+  });
+
+  test("carry the secret for the patch, and none of Paper's switches", () => {
+    const env = withNeo().environment ?? {};
+    expect(env.CFG_FORWARDING_SECRET).toContain("${FORWARDING_SECRET");
+    expect(env.CFG_VELOCITY_ENABLED).toBeUndefined();
+    expect(env.PATCH_DEFINITIONS).toBe("/patches");
+  });
+
+  test("do not get BungeeGuard: Proxy-Compatible-Forge implements it", () => {
+    const env = withNeo({ forwarding: "bungeeguard" }).environment ?? {};
+    expect(env.PLUGINS).toBeUndefined();
+    expect(env.MODS).toBeUndefined();
   });
 });

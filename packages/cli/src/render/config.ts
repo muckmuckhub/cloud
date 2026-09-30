@@ -45,6 +45,7 @@ export function renderCloudToml(cfg: CloudConfig): string {
     out.push(`memory_limit = ${tomlString(cfg.proxy.memory_limit)}`);
   }
   if (cfg.proxy.java) out.push(`java     = ${cfg.proxy.java}`);
+  if (cfg.proxy.pin) out.push(`pin      = ${tomlString(cfg.proxy.pin)}`);
   if (cfg.proxy.plugins.length) {
     out.push(`plugins  = ${tomlValue(cfg.proxy.plugins)}`);
   }
@@ -75,6 +76,7 @@ export function renderCloudToml(cfg: CloudConfig): string {
       out.push(`memory_limit = ${tomlString(g.memory_limit)}`);
     }
     if (g.java) out.push(`java     = ${g.java}`);
+    if (g.pin) out.push(`pin      = ${tomlString(g.pin)}`);
     out.push(`min      = ${g.min}`);
     if (g.fallback) {
       out.push(`fallback = true              # players land here`);

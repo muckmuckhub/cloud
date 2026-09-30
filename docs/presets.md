@@ -96,4 +96,6 @@ current version.
 - Applying it twice changes nothing.
 - It opens ports on the proxy and nowhere else.
 - It has a description, and a docs link if it installs jars.
+- It still validates next to a Fabric group: plugin jars and references
+  meant for "every group" skip mod servers, which cannot load them.
 - Its Hangar and Modrinth references reach the rendered container.

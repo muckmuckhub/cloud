@@ -13,8 +13,10 @@
  * that says nothing about a bad URL. A dead link in here is a broken server
  * for whoever runs `cloud add`, so it is worth finding on our side.
  */
+import { FABRIC_PROXY_LITE, PROXY_COMPATIBLE_FORGE } from "@cloud/schema";
 import { PRESETS } from "../packages/cli/src/presets/registry.ts";
 import { hangarUrl } from "../packages/cli/src/render/compose.ts";
+import { BUNGEEGUARD_JAR } from "../packages/cli/src/render/forwarding.ts";
 
 const JAR_TYPES = [
   "application/java-archive",
@@ -32,7 +34,30 @@ interface Target {
   kind: "jar" | "modrinth";
 }
 
-const targets: Target[] = [];
+// Jars the tool installs by itself, not through a preset. They rot the same way.
+const targets: Target[] = [
+  {
+    preset: "(bungeeguard forwarding)",
+    url: BUNGEEGUARD_JAR,
+    docs: "https://github.com/lucko/BungeeGuard/releases",
+    kind: "jar",
+  },
+];
+// The FabricProxy-Lite pins every Fabric group gets, one per version range.
+for (const { version } of FABRIC_PROXY_LITE) {
+  targets.push({
+    preset: "(fabric servers)",
+    url: `https://api.modrinth.com/v2/project/fabricproxy-lite/version/${version}`,
+    docs: "https://modrinth.com/mod/fabricproxy-lite/versions",
+    kind: "modrinth",
+  });
+}
+targets.push({
+  preset: "(neoforge servers)",
+  url: `https://api.modrinth.com/v2/project/proxy-compatible-forge/version/${PROXY_COMPATIBLE_FORGE}`,
+  docs: "https://modrinth.com/mod/proxy-compatible-forge/versions",
+  kind: "modrinth",
+});
 for (const preset of Object.values(PRESETS)) {
   for (const url of [...(preset.proxyPlugins ?? []), ...(preset.allGroupPlugins ?? [])]) {
     targets.push({ preset: preset.name, url, docs: preset.docs, kind: "jar" });

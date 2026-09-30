@@ -3,9 +3,11 @@
 **Version 1.**
 
 Changelog: `network.storage`, `proxy.ports` and `proxy.env` added in tool
-0.1.0. `memory_limit`, `modrinth` and `hangar` added to `[proxy]` and
-`[groups.<name>]` after 0.1.0. All additive and optional; spec version
-unchanged.
+0.1.0. After 0.1.0: `memory_limit`, `modrinth`, `hangar` and `pin` added to
+`[proxy]` and `[groups.<name>]`, and `fabric` and `neoforge` to
+`groups.<name>.software` (additive and optional); the `proxy.version`
+default moved from `3.4.0-SNAPSHOT` to the stable `3.5.1`; `forwarding =
+"none"` dropped from the enum (it never validated). Spec version unchanged.
 
 This document is versioned separately from the tool. It exists so that the
 compatibility promise is a written contract rather than an implementation
@@ -29,7 +31,7 @@ detail that shifts when someone refactors.
 | `name` | string | — | Required. `^[a-z][a-z0-9-]*$`, max 32. Prefixes container names. |
 | `entry_port` | int | `25565` | The single host port published. 1–65535. |
 | `motd` | string | `"A Velocity Server"` | Shown in the server list. |
-| `forwarding` | enum | `"modern"` | `modern` \| `legacy` \| `bungeeguard` \| `none` |
+| `forwarding` | enum | `"modern"` | `modern` \| `legacy` \| `bungeeguard` |
 | `online` | bool | `true` | Whether the proxy authenticates against Mojang. |
 | `domain` | string | — | Optional. Used only to print DNS instructions. |
 | `storage` | enum | `"bind"` | `bind` \| `volume`. Where static groups keep their data. |
@@ -51,7 +53,7 @@ offline-mode UUID and leaves backends unauthenticated.
 | Mode | Proxies | Secret | Backend wiring | Extra setup |
 |---|---|---|---|---|
 | `modern` | Velocity only | yes | `proxies.velocity.*` in `paper-global.yml` | none |
-| `bungeeguard` | any | yes (a token) | `settings.bungeecord: true` | BungeeGuard plugin on proxy and every backend |
+| `bungeeguard` | any | yes (a token) | `settings.bungeecord: true` | none — BungeeGuard is installed and configured by `cloud apply` |
 | `legacy` | any | no | `settings.bungeecord: true` | none |
 | `none` | — | — | — | rejected |
 
@@ -61,10 +63,13 @@ with "Unable to verify player identity" — indistinguishable from a bad secret.
 Failing at parse time rather than at login time is the whole point of catching
 it here.
 
-Under `bungeeguard` this tool writes the token and wires the proxy, but the
-BungeeGuard plugin's own `allowed-tokens` on each backend is manual: the plugin
-generates that file on first boot, so there is nothing to patch beforehand.
-The token is available to backends as `$CFG_FORWARDING_SECRET`.
+Under `bungeeguard` the token is the forwarding secret. A pinned BungeeGuard is
+added to every backend's plugins, and to the proxy unless it is Velocity, which
+implements the mode itself. Each backend's `plugins/BungeeGuard/config.yml` is
+seeded by `apply` when absent and has `allowed-tokens` replaced with the secret
+on every start; a BungeeCord proxy gets it in `plugins/BungeeGuard/token.yml`,
+rewritten by every `apply`. A user-listed plugin URL ending in
+`BungeeGuard.jar` replaces the pinned one.
 
 Whatever the mode, `server.properties` gets `online-mode=false` and exactly one
 of the Velocity or BungeeCord backend switches is on. Both on, or both off,
@@ -75,10 +80,11 @@ breaks login or skins respectively.
 | Key | Type | Default |
 |---|---|---|
 | `software` | enum | `"velocity"` — also `bungeecord`, `waterfall` |
-| `version` | string | `"3.4.0-SNAPSHOT"` | Not `latest` — that resolves to a 4.x snapshot. Pins Velocity only. |
+| `version` | string | `"3.5.1"` | Not `latest` — that resolves to a 4.x snapshot. Pins Velocity only. |
 | `java` | int | derived | Override the container's Java version. |
 | `memory` | string | `"512m"` — `^\d+[MmGg]$` |
 | `memory_limit` | string | derived — container cap, must exceed `memory` |
+| `pin` | string | — `java<N>@sha256:<digest>`, tag must match the derived one |
 | `plugins` | string[] | `[]` — direct download URLs |
 | `modrinth` | string[] | `[]` — Modrinth `slug:version`, version required |
 | `hangar` | string[] | `[]` — Hangar `slug:version`, rendered for `VELOCITY` or `WATERFALL` |
@@ -104,10 +110,11 @@ the README.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `software` | enum | `"paper"` — also `folia`, `purpur`, `spigot` |
+| `software` | enum | `"paper"` — also `folia`, `purpur`, `spigot`, `fabric`, `neoforge` |
 | `version` | string | — | Required. `^\d+\.\d+(\.\d+)?$` |
 | `memory` | string | `"2G"` | JVM heap. |
 | `memory_limit` | string | derived | Container cap: heap + max(heap/4, 512M). Must exceed `memory`. |
+| `pin` | string | — | Image digest pin, `java<N>@sha256:<digest>`. The tag must be the one derived from `version`/`java`. |
 | `java` | int | derived | Override the container's Java version. |
 | `min` | int | `1` | Instances to keep running. 0–50. |
 | `fallback` | bool | `false` | Players land here. Exactly one group must set it. |
@@ -131,6 +138,12 @@ that made `/latest/` URLs serve an HTML page instead of a jar.
 5. No entry in `proxy.ports` may republish `network.entry_port` on TCP, or
    collide with another entry on the same host port and protocol.
 6. `memory_limit`, where set on the proxy or a group, is larger than `memory`.
+7. A `pin`, where set, names the Java tag derived for that service.
+8. A `fabric` group requires `forwarding = "modern"`, and a Minecraft version
+   with a known FabricProxy-Lite release unless it lists `fabricproxy-lite`
+   in `modrinth` itself.
+9. A `neoforge` group requires Minecraft 1.20.1 or newer.
+10. `fabric` and `neoforge` groups cannot use `hangar`.
 
 `static` does **not** mean "persistent as opposed to disposable": every group
 keeps its data across restarts, in a named volume by default. `static` chooses
@@ -181,7 +194,7 @@ Derived from the software version, overridable with `java`:
 | 26.1+ | 25 | 69 |
 
 Velocity 3.x runs on Java 21; Velocity 4.x requires Java 25. `version =
-"latest"` currently resolves to a 4.0.0 snapshot, so it implies Java 25 — which
+"latest"` currently resolves to a 4.x snapshot, so it implies Java 25 — which
 is why the default is a pinned 3.x release rather than `latest`.
 
 An `UnsupportedClassVersionError` reports class file numbers, not Java
@@ -193,6 +206,7 @@ These are computed and must not appear in `cloud.toml`:
 
 - Backend ports. All backends bind 25565 in their own namespace.
 - Docker image names and Java versions — derived from `software` + `version`.
+  `pin` freezes the digest of the derived tag; it cannot select another image.
 - `online-mode` on backends — always `false`; the proxy authenticates.
 - `proxies.velocity.online-mode` in Paper — mirrors `network.online`.
 - `settings.bungeecord` in `spigot.yml` — derived from the forwarding mode:

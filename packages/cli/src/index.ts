@@ -3,8 +3,11 @@ import { ConfigError } from "./config.ts";
 import { DockerError } from "./docker.ts";
 import { NoProviderError } from "./ai/provider.ts";
 import { c } from "./ui.ts";
+import pkg from "../package.json" with { type: "json" };
 
-const VERSION = "0.1.0";
+// Read from package.json, so a release bump is one edit and a stale constant
+// cannot ship a binary that reports the previous version.
+const VERSION = pkg.version;
 
 const HELP = `${c.bold("cloud")} — Minecraft networks from one config file
 

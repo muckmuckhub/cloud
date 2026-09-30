@@ -5,7 +5,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun build packages/cli/src/index.ts --compile --outfile dist/cloud",
+    "build": "bun build packages/cli/src/index.ts --compile --no-compile-autoload-dotenv --outfile dist/cloud",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "check": "bun run typecheck && bun test && bun run scripts/check-invariants.ts && bun run scripts/check-docs.ts",

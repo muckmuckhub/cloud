@@ -6,6 +6,7 @@ import {
   generateSecret,
   readSecret,
   rotateSecret,
+  writeProxyToken,
   secretPath,
   writeSecret,
 } from "../src/secret.ts";
@@ -119,6 +120,31 @@ describe("rotateSecret", () => {
       const env = await readFile(join(dir, ".env"), "utf8");
       expect(env).toContain(`FORWARDING_SECRET=${after}`);
       expect(env).not.toContain(before);
+    });
+  });
+});
+
+describe("writeProxyToken", () => {
+  test("writes the secret where BungeeGuard's proxy plugin reads it", async () => {
+    await withTempDir(async (dir) => {
+      await writeProxyToken(dir, "abc-123_XYZ");
+      const body = await readFile(
+        join(dir, "data", "proxy", "plugins", "BungeeGuard", "token.yml"),
+        "utf8",
+      );
+      expect(body).toBe('token: "abc-123_XYZ"\n');
+    });
+  });
+
+  test("overwrites on every call, so a rotation reaches it", async () => {
+    await withTempDir(async (dir) => {
+      await writeProxyToken(dir, "old");
+      await writeProxyToken(dir, "new");
+      const body = await readFile(
+        join(dir, "data", "proxy", "plugins", "BungeeGuard", "token.yml"),
+        "utf8",
+      );
+      expect(body).toContain('"new"');
     });
   });
 });

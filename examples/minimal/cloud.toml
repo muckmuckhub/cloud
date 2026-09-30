@@ -14,7 +14,7 @@ online     = true
 
 [proxy]
 software = "velocity"
-version  = "3.4.0-SNAPSHOT"   # not "latest": that is a 4.x snapshot needing Java 25
+version  = "3.5.1"            # not "latest": that is a 4.x snapshot needing Java 25
 memory   = "512m"
 
 [groups.lobby]

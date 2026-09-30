@@ -21,26 +21,25 @@ internet ──▶ :25565 ──▶ bungeecord ──┬──▶ lobby-1:25565
 | Forwarding | `modern` | `bungeeguard` or `legacy` |
 | Forwarding switch | `player-info-forwarding-mode` | `ip_forward: true` |
 | Backend switch | `proxies.velocity.enabled` | `spigot.yml` `settings.bungeecord` |
-| Secret handling | built in | BungeeGuard plugin, installed by you |
+| Secret handling | built in | BungeeGuard plugin, installed by `cloud apply` |
 
 `forwarding = "modern"` here is a validation error, not a runtime surprise.
 Modern forwarding is a Velocity protocol; BungeeCord would start, listen, and
 reject every login with `Unable to verify player identity` — which looks
 exactly like a bad secret and is not one.
 
-## The one manual step
+## BungeeGuard
 
-`cloud apply` generates `proxy/forwarding.secret` and hands it to every backend
-as `$CFG_FORWARDING_SECRET`, but BungeeGuard keeps its allowlist in its own
-config file, which the plugin only creates on first boot. So:
+Nothing to do by hand. For `forwarding = "bungeeguard"`, `cloud apply`:
 
-```sh
-cloud apply                      # start everything once, let the plugin generate its config
-cat proxy/forwarding.secret      # the token
-```
+- installs a pinned BungeeGuard on the proxy and on every backend,
+- writes the forwarding secret to `data/proxy/plugins/BungeeGuard/token.yml`,
+- seeds each backend's `plugins/BungeeGuard/config.yml` before its first boot,
+  and sets its `allowed-tokens` to the same secret on every start.
 
-Put that token in `allowed-tokens` in `plugins/BungeeGuard/config.yml` on every
-backend, and in the proxy's BungeeGuard config, then `cloud restart`.
+`cloud apply --rotate-secret` updates all of them and restarts the proxy and
+the backends together. The rest of BungeeGuard's config — its kick messages —
+is yours; see the template below.
 
 Choosing `forwarding = "legacy"` instead skips all of that and needs no plugin.
 It is safe only because backends publish no port — anyone who *could* reach a
@@ -58,7 +57,7 @@ templates/lobby/
 ```
 
 ```sh
-vim templates/lobby/plugins/BungeeGuard/config.yml
+vim templates/lobby/plugins/BungeeGuard/config.yml   # messages; the token is set for you
 cloud restart lobby --rolling      # both instances pick it up, no outage
 ```
 

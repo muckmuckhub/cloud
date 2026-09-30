@@ -275,20 +275,30 @@ forwarding = "bungeeguard"   # NOT "modern" — that is Velocity-only
 Modern forwarding is a Velocity protocol. Asking for it on BungeeCord is
 rejected at validation rather than at login time, where it looks identical to a
 bad secret. The alternatives are `bungeeguard` (BungeeCord-style forwarding plus
-a token the BungeeGuard plugin checks, which you install on the proxy and every
-backend) and `legacy` (no token at all — safe only because backends publish no
-port). `cloud apply` renders `proxy/config.yml` instead of `velocity.toml`, and
+a token the BungeeGuard plugin checks — `cloud apply` installs and configures it
+on the proxy and every backend) and `legacy` (no token at all — safe only
+because backends publish no port). `cloud apply` renders `proxy/config.yml` instead of `velocity.toml`, and
 patches `spigot.yml` instead of Paper's Velocity section. See
 [examples/bungeecord/](examples/bungeecord/).
 
 `proxy.version` pins Velocity only; the BungeeCord and Waterfall images track
 their own latest build.
 
+## Modded servers
+
+`software = "fabric"` and `software = "neoforge"` run mods behind the same
+proxy. Each trusts the proxy through a mod — FabricProxy-Lite or
+Proxy-Compatible-Forge — that `cloud apply` installs, pins and hands the
+forwarding secret, so there is nothing to configure by hand. Fabric needs
+Velocity's modern forwarding; NeoForge works with any mode. See
+[examples/modded/](examples/modded/).
+
 ## Databases, Prometheus, anything else
 
 No feature needed — `docker compose` already merges `docker-compose.override.yml`
 with the generated file, so that is where anything this tool does not model
-goes. Nothing reads or writes it; it is yours.
+goes. Nothing reads or writes it; it is yours. Backups work the same way — a
+tested [itzg/mc-backup recipe](docs/integrations.md#backups), restore included.
 
 ```yaml
 # docker-compose.override.yml

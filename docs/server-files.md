@@ -19,7 +19,9 @@ mynetwork/
     survival/                     static group: its whole directory
 ```
 
-Every server's plugin directory is bind-mounted, whatever `storage` says. A
+Every server's plugin directory is bind-mounted, whatever `storage` says —
+or, on a Fabric or NeoForge server, its `config/` directory, which is where
+mods keep their settings. A
 Docker named volume cannot be opened from the host, and plugin configuration is
 the one thing people genuinely need to reach.
 

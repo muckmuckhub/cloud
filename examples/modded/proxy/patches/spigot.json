@@ -1,0 +1,12 @@
+{
+  "file": "/data/spigot.yml",
+  "ops": [
+    {
+      "$set": {
+        "path": "$.settings.bungeecord",
+        "value": "${CFG_BUNGEE_ENABLED}",
+        "value-type": "bool"
+      }
+    }
+  ]
+}

@@ -199,3 +199,29 @@ describe("plugin references in presets", () => {
     expect(CloudConfigSchema.safeParse(out).success).toBe(true);
   });
 });
+
+describe("presets and fabric groups", () => {
+  const mixed = config({
+    groups: {
+      lobby: { version: "1.21.10", fallback: true },
+      modded: { software: "fabric", version: "1.21.10" },
+    },
+  });
+
+  test.each(Object.keys(PRESETS))("%s still produces a valid config next to a fabric group", (name) => {
+    expect(CloudConfigSchema.safeParse(applyPreset(mixed, PRESETS[name])).success).toBe(true);
+  });
+
+  test("plugin jars and references skip the fabric group", () => {
+    const out = applyPreset(mixed, PRESETS.viaversion);
+    expect(out.groups.lobby.hangar.length).toBeGreaterThan(0);
+    expect(out.groups.modded.hangar).toEqual([]);
+    const lp = applyPreset(mixed, PRESETS.luckperms);
+    expect(lp.groups.modded.plugins).toEqual([]);
+  });
+
+  test("environment still reaches it", () => {
+    const out = applyPreset(mixed, { name: "x", description: "x", allGroupEnv: { A: "1" } });
+    expect(out.groups.modded.env.A).toBe("1");
+  });
+});

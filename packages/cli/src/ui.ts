@@ -84,7 +84,8 @@ export function table(
   const line = (cells: string[]) =>
     cells
       .map((cell, i) => cell + " ".repeat(Math.max(0, widths[i] - visible(cell))))
-      .join("  ");
+      .join("  ")
+      .trimEnd();
   return [
     c.dim(line(columns.map((h) => h.toUpperCase()))),
     ...rows.map((r) => line(columns.map((col) => r[col] ?? ""))),

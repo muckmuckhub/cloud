@@ -8,6 +8,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": false,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
     "types": ["bun-types"],
     "paths": { "@cloud/schema": ["./packages/schema/src/index.ts"] }
   },

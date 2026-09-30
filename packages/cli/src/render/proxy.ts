@@ -98,14 +98,14 @@ enabled = false
 export function renderBungeeConfig(cfg: CloudConfig): string {
   const { servers: topo, fallbacks } = topology(cfg);
   const wiring = wiringFor(cfg.network.forwarding);
-  // BungeeGuard's token lives in the plugin's own config on both ends, which
-  // this tool cannot generate — say so in the file rather than leaving the
-  // operator to discover it from failed logins.
-  const guidance = wiring.usesSecret
+  // BungeeGuard's token lives in the plugin's own files, not in this one.
+  // Say where, so nobody goes looking for it here.
+  const guidance = wiring.guard
     ? [
-        "# bungeeguard: install the BungeeGuard plugin on the proxy and on every",
-        "# backend, and put the token from proxy/forwarding.secret in both.",
-        "# See SPEC.md, \"Forwarding modes\".",
+        "# bungeeguard: the BungeeGuard plugin is installed on the proxy and every",
+        "# backend by `cloud apply`, and its token is the forwarding secret —",
+        "# data/proxy/plugins/BungeeGuard/token.yml here, allowed-tokens on the",
+        "# backends. Rotate with `cloud apply --rotate-secret`.",
         "",
       ].join("\n")
     : "";
@@ -174,9 +174,35 @@ ${guidance}`;
  * in this form — that shape is rejected with "unrecognized field patches".
  * Two target files therefore mean two definition files.
  */
+/**
+ * Proxy-Compatible-Forge's settings for NeoForge servers, if there are any.
+ *
+ * $put on the [forwarding] table, so each key is added when the file is the
+ * near-empty seed and replaced when NeoForge has written it out in full. The
+ * mode follows the network's, from the one table in forwarding.ts.
+ */
+export function renderNeoForgePatches(cfg: CloudConfig): Record<string, string> {
+  if (!Object.values(cfg.groups).some((g) => g.software === "neoforge")) return {};
+  const wiring = wiringFor(cfg.network.forwarding);
+  const put = (key: string, value: string, type?: string) => ({
+    $put: { path: "$.forwarding", key, value, ...(type ? { "value-type": type } : {}) },
+  });
+  const ops = [put("enabled", "true", "bool"), put("mode", wiring.pcfMode)];
+  if (wiring.usesSecret) ops.push(put("secret", "${CFG_FORWARDING_SECRET}"));
+  return {
+    "proxy-compatible-forge.json":
+      JSON.stringify(
+        { file: "/data/config/proxy-compatible-forge.toml", "file-format": "toml", ops },
+        null,
+        2,
+      ) + "\n",
+  };
+}
+
 export function renderPaperPatches(cfg: CloudConfig): Record<string, string> {
   const wiring = wiringFor(cfg.network.forwarding);
-  // "none" is rejected by the schema. Nothing to patch if it ever gets here.
+  // Every mode enables exactly one of the two; a mode that enables neither
+  // has nothing to patch.
   if (!wiring.velocityEnabled && !wiring.bungeeEnabled) return {};
 
   const velocityOps: Record<string, unknown>[] = [
@@ -238,8 +264,42 @@ export function renderPaperPatches(cfg: CloudConfig): Record<string, string> {
     ],
   };
 
-  return {
+  const patches: Record<string, string> = {
     "paper-global.json": JSON.stringify(paperGlobal, null, 2) + "\n",
     "spigot.json": JSON.stringify(spigot, null, 2) + "\n",
   };
+
+  if (wiring.guard) {
+    // Replaces the whole list on every start, so a rotated secret reaches
+    // every backend and the plugin's placeholder tokens never survive. $put
+    // rather than $set: it adds the key when a template supplied a config
+    // without it, where $set would find no path to replace. The value is a
+    // string because the patcher only interpolates strings; "list of string"
+    // turns it into a one-element list afterwards.
+    //
+    // The patcher skips a file that does not exist, and BungeeGuard writes
+    // its config only after the patches have run — so `cloud apply` seeds the
+    // file on the host first (seedBungeeGuard). Without that, the first boot
+    // runs on the plugin's defaults and rejects every login.
+    patches["bungeeguard.json"] =
+      JSON.stringify(
+        {
+          file: "/data/plugins/BungeeGuard/config.yml",
+          ops: [
+            {
+              $put: {
+                path: "$",
+                key: "allowed-tokens",
+                value: "${CFG_FORWARDING_SECRET}",
+                "value-type": "list of string",
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ) + "\n";
+  }
+
+  return patches;
 }

@@ -1,13 +1,20 @@
 import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { hostDirs, instanceNames, renderCompose } from "./render/compose.ts";
+import {
+  hostDirs,
+  hostPluginDir,
+  instanceNames,
+  renderCompose,
+} from "./render/compose.ts";
 import {
   renderBungeeConfig,
+  renderNeoForgePatches,
   renderVelocityToml,
   renderPaperPatches,
 } from "./render/proxy.ts";
 import { proxyConfigFile } from "./render/forwarding.ts";
+import { containerLimitMiB, memoryMiB, runsPlugins } from "@cloud/schema";
 import type { CloudConfig } from "./types.ts";
 import { c } from "./ui.ts";
 
@@ -37,6 +44,12 @@ export const generatedFiles = (cfg: CloudConfig) => {
   };
   for (const [name, body] of Object.entries(renderPaperPatches(cfg))) {
     files[`proxy/patches/${name}`] = body;
+  }
+  // A subdirectory, because the patcher reads only the files directly in the
+  // directory it is given: Paper servers mount proxy/patches and never see
+  // these, NeoForge servers mount proxy/patches/neoforge and see only these.
+  for (const [name, body] of Object.entries(renderNeoForgePatches(cfg))) {
+    files[`proxy/patches/neoforge/${name}`] = body;
   }
   return files;
 };
@@ -81,6 +94,50 @@ export function rollingPlan(cfg: CloudConfig): { group: string; instances: strin
   return plan;
 }
 
+export interface MemoryBudget {
+  /** Sum of every container's JVM heap. */
+  heapMiB: number;
+  /** Sum of every container's memory cap — what they may use together. */
+  capMiB: number;
+}
+
+/** What the whole network is allowed to use, from the same caps compose gets. */
+export function memoryBudget(cfg: CloudConfig): MemoryBudget {
+  let heapMiB = memoryMiB(cfg.proxy.memory);
+  let capMiB = containerLimitMiB(cfg.proxy.memory, cfg.proxy.memory_limit);
+  for (const [group, g] of Object.entries(cfg.groups)) {
+    const n = instanceNames(group, g.min).length;
+    heapMiB += n * memoryMiB(g.memory);
+    capMiB += n * containerLimitMiB(g.memory, g.memory_limit);
+  }
+  return { heapMiB, capMiB };
+}
+
+const gib = (mib: number) => `${(mib / 1024).toFixed(1)}G`;
+
+/**
+ * Says so when the network cannot fit in the memory Docker has.
+ *
+ * Caps are ceilings, not reservations, so Docker starts everything anyway —
+ * and then, as the heaps fill over the next hour, the kernel kills servers
+ * one at a time. That surfaces as random restarts with exit code 137 and
+ * nothing in any server log, long after the apply that caused it. Docker
+ * Desktop's VM defaults to a fraction of the machine's memory, which makes
+ * this easy to hit on a laptop.
+ */
+export function memoryWarning(budget: MemoryBudget, hostMiB: number): string | null {
+  if (!hostMiB || budget.capMiB <= hostMiB) return null;
+  const heapsFit = budget.heapMiB <= hostMiB;
+  return (
+    `this network may use up to ${gib(budget.capMiB)}, but Docker has ${gib(hostMiB)} in total.\n` +
+    (heapsFit
+      ? `  It starts, but once the heaps fill, servers are killed at random (exit code 137).\n`
+      : `  The heaps alone (${gib(budget.heapMiB)}) do not fit — servers will be killed as they fill.\n`) +
+    `  Lower memory in cloud.toml, run fewer instances, or give Docker more memory\n` +
+    `  (Docker Desktop: Settings → Resources).`
+  );
+}
+
 /**
  * Templates that are declared but have nothing in them.
  *
@@ -119,6 +176,87 @@ export async function createHostDirs(
   for (const dir of hostDirs(cfg)) {
     await mkdir(join(root, dir), { recursive: true });
   }
+}
+
+/**
+ * Makes sure every backend has a BungeeGuard config before its first boot.
+ *
+ * The token itself is patched in at every container start (see
+ * renderPaperPatches), but the patcher skips files that do not exist, and the
+ * plugin only writes its config after the patches have run. So a fresh
+ * backend booted on BungeeGuard's placeholder tokens and rejected every login
+ * until its second start. Seeding an almost empty file closes that window;
+ * the plugin fills in its default messages itself.
+ *
+ * Never overwrites: once the file exists it is the operator's, apart from
+ * `allowed-tokens`, which the patch owns.
+ *
+ * Skips a group whose template ships the file. The template is copied in
+ * before the patches run, so it is already the seed — and a host-written copy
+ * underneath it broke the group on Docker Desktop: files created from Windows
+ * or macOS appear inside the container with an owner the image cannot touch,
+ * the template sync failed with "Operation not permitted" and the server
+ * crash-looped.
+ */
+export async function seedBungeeGuard(root: string, cfg: CloudConfig): Promise<string[]> {
+  const seeded: string[] = [];
+  for (const [group, g] of Object.entries(cfg.groups)) {
+    // NeoForge implements BungeeGuard itself (Proxy-Compatible-Forge), and
+    // the schema keeps Fabric out of this mode altogether.
+    if (!runsPlugins(g.software)) continue;
+    const fromTemplate =
+      g.template &&
+      existsSync(join(root, "templates", g.template, "plugins", "BungeeGuard", "config.yml"));
+    if (fromTemplate) continue;
+    for (const instance of instanceNames(group, g.min)) {
+      const file = join(root, hostPluginDir(instance), "BungeeGuard", "config.yml");
+      if (existsSync(file)) continue;
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(
+        file,
+        "# Seeded by `cloud apply` for forwarding = \"bungeeguard\".\n" +
+          "# allowed-tokens is set to the forwarding secret on every start.\n" +
+          "allowed-tokens: []\n",
+        "utf8",
+      );
+      seeded.push(relToRoot(root, file));
+    }
+  }
+  return seeded;
+}
+
+/**
+ * Makes sure every NeoForge server has a Proxy-Compatible-Forge config before
+ * its first boot — the same gap as seedBungeeGuard: the patcher skips a file
+ * that does not exist, and the mod writes its defaults, with an empty secret,
+ * only once the server is already running. Seeded under config/, which is on
+ * the host for mod servers. Skipped when a template ships the file, and never
+ * overwritten.
+ */
+export async function seedNeoForge(root: string, cfg: CloudConfig): Promise<string[]> {
+  const seeded: string[] = [];
+  for (const [group, g] of Object.entries(cfg.groups)) {
+    if (g.software !== "neoforge") continue;
+    const fromTemplate =
+      g.template &&
+      existsSync(join(root, "templates", g.template, "config", "proxy-compatible-forge.toml"));
+    if (fromTemplate) continue;
+    for (const instance of instanceNames(group, g.min)) {
+      const file = join(root, "data", instance, "config", "proxy-compatible-forge.toml");
+      if (existsSync(file)) continue;
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(
+        file,
+        "# Seeded by `cloud apply` so Proxy-Compatible-Forge has a config on first boot.\n" +
+          "# [forwarding] enabled, mode and secret are set from cloud.toml on every start.\n" +
+          "[forwarding]\n" +
+          "enabled = true\n",
+        "utf8",
+      );
+      seeded.push(relToRoot(root, file));
+    }
+  }
+  return seeded;
 }
 
 /**

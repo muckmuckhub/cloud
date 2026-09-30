@@ -118,8 +118,9 @@ them.
 
 ## Releasing
 
-1. Bump the version in three places — `packages/cli/src/index.ts`,
-   `packages/cli/package.json`, `packages/schema/package.json` — and commit.
+1. Bump the version in two places — `packages/cli/package.json` and
+   `packages/schema/package.json` — and commit. `cloud --version` reads the
+   first, and a test fails if the two disagree.
 2. Tag and push:
 
    ```sh
@@ -127,7 +128,7 @@ them.
    git push origin v0.2.0
    ```
 
-CI refuses to publish if those three do not match the tag, before anything is
+CI refuses to publish if those two do not match the tag, before anything is
 compiled, so a forgotten bump costs a re-tag rather than a release whose
 `cloud --version` lies. To fix one:
 

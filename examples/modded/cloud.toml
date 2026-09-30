@@ -1,0 +1,48 @@
+# A Velocity network with modded servers next to a Paper lobby: one Fabric,
+# one NeoForge.
+#
+# Mod servers do not have Paper's built-in proxy support; each trusts the
+# proxy through a mod instead, and `cloud apply` installs and configures it:
+#
+#   fabric    FabricProxy-Lite, pinned per Minecraft version, secret passed in
+#             the environment. Velocity modern forwarding only.
+#   neoforge  Proxy-Compatible-Forge, one pinned release, settings patched into
+#             its config on every start. Any forwarding mode.
+#
+# This network uses modern forwarding, which is the one both support.
+
+[network]
+name       = "modded-example"
+entry_port = 25565
+motd       = "Paper lobby, Fabric survival, NeoForge create"
+forwarding = "modern"          # the only mode FabricProxy-Lite supports
+online     = true
+
+[proxy]
+software = "velocity"
+version  = "3.5.1"
+memory   = "512m"
+
+[groups.lobby]
+software = "paper"
+version  = "1.21.10"
+memory   = "2G"
+fallback = true
+
+[groups.survival]
+software = "fabric"
+version  = "1.21.10"
+memory   = "4G"
+static   = true
+# Mods, by Modrinth slug and pinned version. FabricProxy-Lite and Fabric API
+# are added for you; list only what the server itself should run.
+modrinth = ["lithium:mc1.21.10-0.20.1-fabric"]
+
+[groups.create]
+software = "neoforge"
+version  = "1.21.1"
+memory   = "6G"
+static   = true
+# Proxy-Compatible-Forge is added for you. Required dependencies of listed mods
+# are resolved by the server image.
+modrinth = ["create:6.0.10+mc1.21.1"]

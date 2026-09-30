@@ -1,0 +1,28 @@
+{
+  "file": "/data/config/proxy-compatible-forge.toml",
+  "file-format": "toml",
+  "ops": [
+    {
+      "$put": {
+        "path": "$.forwarding",
+        "key": "enabled",
+        "value": "true",
+        "value-type": "bool"
+      }
+    },
+    {
+      "$put": {
+        "path": "$.forwarding",
+        "key": "mode",
+        "value": "MODERN"
+      }
+    },
+    {
+      "$put": {
+        "path": "$.forwarding",
+        "key": "secret",
+        "value": "${CFG_FORWARDING_SECRET}"
+      }
+    }
+  ]
+}

@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { CloudConfigSchema, containerLimitMiB, hostPort, memoryMiB } from "../src/index.ts";
+import {
+  CloudConfigSchema,
+  containerLimitMiB,
+  fabricProxyLiteFor,
+  Forwarding,
+  hostPort,
+  memoryMiB,
+} from "../src/index.ts";
 
 /** Shorthand: parse and return the issue messages, joined. */
 function issues(input: unknown): string {
@@ -30,7 +37,7 @@ describe("defaults", () => {
   });
 
   test("the proxy version default is a pinned 3.x, never latest", () => {
-    // "latest" resolves to a Velocity 4.0.0 snapshot needing Java 25.
+    // "latest" resolves to a Velocity 4.x snapshot needing Java 25.
     const cfg = CloudConfigSchema.parse(minimal);
     expect(cfg.proxy.version).not.toBe("latest");
     expect(cfg.proxy.version.startsWith("3.")).toBe(true);
@@ -114,6 +121,15 @@ describe("forwarding", () => {
   test('rejects forwarding = "none" with a reason', () => {
     const msg = issues({ ...minimal, network: { name: "test", forwarding: "none" } });
     expect(msg).toContain("offline-mode UUID");
+  });
+
+  test("never offers none to the AI tool schema", () => {
+    expect(Forwarding.options).toEqual(["modern", "legacy", "bungeeguard"]);
+  });
+
+  test("names the valid modes for any other typo", () => {
+    const msg = issues({ ...minimal, network: { name: "test", forwarding: "velocity" } });
+    expect(msg).toContain('must be "modern", "legacy" or "bungeeguard"');
   });
 
   test("rejects modern forwarding on a non-Velocity proxy", () => {
@@ -270,5 +286,110 @@ describe("plugin references", () => {
   test("reject a URL, which belongs in plugins", () => {
     expect(issues(withRefs(["https://cdn.modrinth.com/x.jar"]))).toContain("groups.lobby.modrinth");
     expect(issues(withRefs([], ["https://hangar.papermc.io/x"]))).toContain("groups.lobby.hangar");
+  });
+});
+
+describe("pin", () => {
+  const digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+  test("accepts a pin for the derived Java tag", () => {
+    expect(
+      issues({
+        ...minimal,
+        proxy: { pin: `java21@${digest}` },
+        groups: { lobby: { version: "1.21.10", fallback: true, pin: `java21@${digest}` } },
+      }),
+    ).toBe("");
+  });
+
+  test("rejects a pin whose tag no longer matches the version", () => {
+    // 26.1 needs Java 25; a java21 digest would run the wrong runtime.
+    const msg = issues({
+      ...minimal,
+      groups: { lobby: { version: "26.1", fallback: true, pin: `java21@${digest}` } },
+    });
+    expect(msg).toContain("groups.lobby.pin");
+    expect(msg).toContain("needs java25");
+  });
+
+  test("follows a java override", () => {
+    expect(
+      issues({
+        ...minimal,
+        groups: { lobby: { version: "1.21.10", fallback: true, java: 25, pin: `java25@${digest}` } },
+      }),
+    ).toBe("");
+  });
+
+  test("rejects a bare digest, which cannot be checked", () => {
+    const msg = issues({
+      ...minimal,
+      groups: { lobby: { version: "1.21.10", fallback: true, pin: digest } },
+    });
+    expect(msg).toContain("java21@sha256:");
+  });
+});
+
+describe("fabric", () => {
+  const fabric = (over: Record<string, unknown> = {}, network: Record<string, unknown> = {}) => ({
+    network: { name: "test", ...network },
+    groups: {
+      lobby: { version: "1.21.10", fallback: true },
+      survival: { software: "fabric", version: "1.21.10", ...over },
+    },
+  });
+
+  test("is accepted behind modern forwarding", () => {
+    expect(issues(fabric())).toBe("");
+  });
+
+  test("is rejected under any other forwarding mode", () => {
+    const msg = issues(fabric({}, { forwarding: "legacy" }));
+    expect(msg).toContain("groups.survival.software");
+    expect(msg).toContain("FabricProxy-Lite");
+  });
+
+  test("rejects Hangar references, which are Paper plugins", () => {
+    expect(issues(fabric({ hangar: ["ViaVersion:5.11.0"] }))).toContain("groups.survival.hangar");
+  });
+
+  test("needs a known FabricProxy-Lite for its version, or one listed by hand", () => {
+    expect(issues(fabric({ version: "1.20.4" }))).toContain("no known FabricProxy-Lite");
+    expect(issues(fabric({ version: "1.20.4", modrinth: ["fabricproxy-lite:v2.7.0"] }))).toBe("");
+  });
+
+  test("the FabricProxy-Lite table follows Modrinth's version ranges", () => {
+    expect(fabricProxyLiteFor("1.21")).toBe("v2.10.1");
+    expect(fabricProxyLiteFor("1.21.8")).toBe("v2.10.1");
+    expect(fabricProxyLiteFor("1.21.9")).toBe("v2.11.0");
+    expect(fabricProxyLiteFor("1.21.11")).toBe("v2.11.0");
+    expect(fabricProxyLiteFor("26.3.1")).toBe("v2.12.0");
+    expect(fabricProxyLiteFor("1.20.6")).toBeNull();
+    expect(fabricProxyLiteFor("26.4")).toBeNull();
+  });
+});
+
+describe("neoforge", () => {
+  const neo = (over: Record<string, unknown> = {}, network: Record<string, unknown> = {}) => ({
+    network: { name: "test", ...network },
+    groups: {
+      lobby: { version: "1.21.10", fallback: true },
+      modded: { software: "neoforge", version: "1.21.1", ...over },
+    },
+  });
+
+  test("works under every forwarding mode, unlike fabric", () => {
+    expect(issues(neo())).toBe("");
+    expect(issues(neo({}, { forwarding: "legacy" }))).toBe("");
+    expect(issues(neo({}, { forwarding: "bungeeguard" }))).toBe("");
+  });
+
+  test("starts at 1.20.1", () => {
+    expect(issues(neo({ version: "1.19.2" }))).toContain("NeoForge starts at Minecraft 1.20.1");
+    expect(issues(neo({ version: "1.20.1" }))).toBe("");
+  });
+
+  test("rejects Hangar references", () => {
+    expect(issues(neo({ hangar: ["ViaVersion:5.11.0"] }))).toContain("neoforge server cannot load");
   });
 });

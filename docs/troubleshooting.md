@@ -93,7 +93,12 @@ stops, with no error. Confirm with:
 docker inspect --format "{{.State.OOMKilled}}" <network>-<server>
 ```
 
-`true` means the JVM needed more than its heap allows for. Raise
+If several servers die this way at once, the network does not fit in Docker's
+memory at all — `cloud apply` warns about that before it starts anything
+("this network may use up to …"). On Docker Desktop the limit is the VM's, set
+under Settings → Resources, not the machine's.
+
+For a single server, `true` means the JVM needed more than its heap allows for. Raise
 `memory_limit` on that group (or the proxy); see
 [Configuration](configuration.md#memory). Raising `memory` alone does not help
 if the cap is derived from it, because the headroom stays the same size.

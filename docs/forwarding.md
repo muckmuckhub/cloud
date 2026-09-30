@@ -86,8 +86,8 @@ The secret never enters an AI prompt.
 cloud apply --rotate-secret
 ```
 
-Rotation needs every backend to restart, because Paper reads
-`paper-global.yml` once at boot — which is why it is a flag on `apply` rather
+Rotation needs every backend and the proxy to restart, because Paper reads
+`paper-global.yml` once at boot, and Velocity its secret file — which is why it is a flag on `apply` rather
 than a command of its own. The new value reaches containers through `.env`
 interpolation, so Compose sees changed environment and recreates them as part
 of the same reconcile.
@@ -95,17 +95,19 @@ of the same reconcile.
 ## BungeeGuard
 
 `bungeeguard` gives BungeeCord-style forwarding plus a token that the
-BungeeGuard plugin checks on both ends. `cloud` generates the token and hands
-it to every backend as `CFG_FORWARDING_SECRET`, but the plugin keeps its
-allowlist in its own config file, which it only creates on first boot. So:
+BungeeGuard plugin checks on the backends. The token is the forwarding secret,
+and `cloud apply` wires all of it:
 
-```sh
-cloud apply                      # start once, let the plugin generate its config
-cat proxy/forwarding.secret      # the token
-```
+| | Velocity | BungeeCord / Waterfall |
+|---|---|---|
+| Proxy | built in: `player-info-forwarding-mode = "bungeeguard"` with the secret file | plugin installed, token written to `data/proxy/plugins/BungeeGuard/token.yml` |
+| Backends | plugin installed, `allowed-tokens` set on every start | the same |
 
-Put that token in `allowed-tokens` in `plugins/BungeeGuard/config.yml` on every
-backend and in the proxy's BungeeGuard config, then `cloud restart`.
+The backend config is seeded before a server's first boot, because the plugin
+would otherwise start on its placeholder tokens and reject everyone until its
+second start. After that the file is yours, apart from `allowed-tokens`. The
+plugin is a pinned release; list your own `BungeeGuard.jar` in `plugins` and
+it replaces the built-in one rather than loading twice.
 
 `legacy` skips all of that and needs no plugin. It is safe only because
 backends publish no port — anyone who *could* reach a backend directly could

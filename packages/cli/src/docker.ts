@@ -30,6 +30,22 @@ export async function docker(
   return run("docker", [...base, ...args], { cwd: opts.cwd, stdio: "pipe" });
 }
 
+/**
+ * The environment for docker itself, minus the forwarding secret.
+ *
+ * Compose resolves `${FORWARDING_SECRET}` from the shell first and `.env`
+ * second. Bun loads `.env` into process.env at startup — the compiled binary
+ * too, unless built with --no-compile-autoload-dotenv — so the CLI held the
+ * secret as it was when the command started. `apply --rotate-secret` wrote
+ * the new one to `.env` and then handed Compose the old one, which won: no
+ * container was recreated, and the network broke at the next restart of any
+ * single server. `.env` is the only place Compose should read it from.
+ */
+export function dockerEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const { FORWARDING_SECRET: _, ...rest } = env;
+  return rest;
+}
+
 function run(
   cmd: string,
   args: string[],
@@ -38,6 +54,7 @@ function run(
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
+      env: dockerEnv(process.env),
       stdio: opts.stdio === "inherit" ? "inherit" : ["ignore", "pipe", "pipe"],
       // Prevents a console window flashing on Windows for piped calls.
       windowsHide: true,
@@ -118,6 +135,22 @@ export interface ServiceStatus {
   uptime: string;
 }
 
+/**
+ * How long a container has been up, from Docker's status line:
+ * "Up 2 hours (healthy)" -> "2 hours".
+ *
+ * Not `RunningFor`, which despite its name is the time since the container
+ * was *created* ("2 hours ago") — after a restart it still counts from
+ * creation, so a server that crash-looped a minute ago looked long-lived.
+ * A container that is not up has no uptime.
+ */
+export function uptimeFrom(status: string): string {
+  const m = /^Up (.+?)(?: \((?:healthy|unhealthy|health: starting|Paused)\))?$/.exec(
+    status.trim(),
+  );
+  return m ? m[1] : "-";
+}
+
 export async function status(
   root: string,
   context?: string,
@@ -139,13 +172,28 @@ export async function status(
         name: j.Service ?? j.Name,
         state: j.State ?? "unknown",
         health: j.Health || "-",
-        uptime: j.RunningFor ?? "-",
+        uptime: uptimeFrom(j.Status ?? ""),
       });
     } catch {
       // compose versions differ in output shape; skip unparseable lines
     }
   }
   return out;
+}
+
+/**
+ * Total memory of the Docker engine in MiB — the VM's, on Docker Desktop, not
+ * the machine's. Null when the engine cannot be asked; callers treat that as
+ * "unknown" and skip whatever they wanted it for.
+ */
+export async function engineMemoryMiB(context?: string): Promise<number | null> {
+  try {
+    const { stdout } = await docker(["info", "--format", "{{.MemTotal}}"], { context });
+    const bytes = Number(stdout.trim());
+    return bytes > 0 ? Math.floor(bytes / 1024 / 1024) : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface PublishedPort {

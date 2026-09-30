@@ -15,6 +15,7 @@ import { generatedFiles, rollingPlan } from "../packages/cli/src/plan.ts";
 import {
   hangarUrl,
   hostDirs,
+  serverFilesDir,
   hostPluginDir,
   instanceNames,
   renderCompose,
@@ -24,7 +25,11 @@ import {
   renderVelocityToml,
   renderPaperPatches,
 } from "../packages/cli/src/render/proxy.ts";
-import { proxyConfigFile, wiringFor } from "../packages/cli/src/render/forwarding.ts";
+import {
+  BUNGEEGUARD_JAR,
+  proxyConfigFile,
+  wiringFor,
+} from "../packages/cli/src/render/forwarding.ts";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ""): void {
@@ -111,10 +116,19 @@ for (const example of await readdir(examplesDir)) {
     ),
   );
 
-  const backends = Object.entries(compose.services).filter(([n]) => n !== "proxy");
+  const allBackends = Object.entries(compose.services).filter(([n]) => n !== "proxy");
+  // The Paper/Spigot wiring below does not exist on mod servers, which trust
+  // the proxy through a mod instead. Checked separately further down.
+  const typeIs = (t: string) => ([, s]: (typeof allBackends)[number]) =>
+    s.environment?.TYPE === t;
+  const fabricBackends = allBackends.filter(typeIs("FABRIC"));
+  const neoforgeBackends = allBackends.filter(typeIs("NEOFORGE"));
+  const backends = allBackends.filter(
+    (b) => !typeIs("FABRIC")(b) && !typeIs("NEOFORGE")(b),
+  );
   check(
     "every backend has ONLINE_MODE=FALSE",
-    backends.every(([, s]) => s.environment?.ONLINE_MODE === "FALSE"),
+    allBackends.every(([, s]) => s.environment?.ONLINE_MODE === "FALSE"),
   );
 
   // Plugin files must be reachable from the host for every server, whatever
@@ -125,10 +139,10 @@ for (const example of await readdir(examplesDir)) {
     "every server exposes its plugins on the host",
     everyService.every((name) => {
       const mounts = compose.services[name]?.volumes ?? [];
+      const software = String(compose.services[name]?.environment?.TYPE ?? "").toLowerCase();
+      const files = name === "proxy" ? hostPluginDir(name) : serverFilesDir(name, software).host;
       return mounts.some(
-        (v) =>
-          v.startsWith(`./${hostPluginDir(name)}:`) ||
-          v.startsWith(`./data/${name}:/data`),
+        (v) => v.startsWith(`./${files}:`) || v.startsWith(`./data/${name}:/data`),
       );
     }),
     everyService
@@ -218,10 +232,112 @@ for (const example of await readdir(examplesDir)) {
         ),
       ),
     );
+    // Without it a rotation recreates the backends but not the proxy, which
+    // keeps the old secret in memory and rejects every login.
+    check(
+      "the proxy's environment follows the secret, so a rotation recreates it",
+      String(compose.services.proxy?.environment?.CFG_FORWARDING_SECRET ?? "").includes(
+        "FORWARDING_SECRET",
+      ),
+    );
   } else {
     check(
       "no secret is referenced when the mode has none",
       backends.every((b) => !b[1].environment?.CFG_FORWARDING_SECRET),
+    );
+  }
+
+  // bungeeguard without the plugin on the backends is legacy with a token
+  // nobody checks — the mode's whole point, silently gone.
+  if (wiring.guard) {
+    const hasGuard = (s: { environment?: Record<string, string> }) =>
+      String(s.environment?.PLUGINS ?? "").split(",").includes(BUNGEEGUARD_JAR);
+    check("bungeeguard is installed on every backend", backends.every(([, s]) => hasGuard(s)));
+    check(
+      "bungeeguard is installed on a non-Velocity proxy, and not on Velocity",
+      hasGuard(compose.services.proxy ?? {}) === (cfg.proxy.software !== "velocity"),
+    );
+    check(
+      "bungeeguard tokens are patched on every start",
+      "proxy/patches/bungeeguard.json" in generatedFiles(cfg),
+    );
+  } else {
+    check(
+      "no bungeeguard patch outside bungeeguard mode",
+      !("proxy/patches/bungeeguard.json" in generatedFiles(cfg)),
+    );
+  }
+
+  if (fabricBackends.length) {
+    // FabricProxy-Lite reads the secret from the environment and supports
+    // modern forwarding only; the schema enforces the latter, this the former.
+    check("fabric servers sit behind modern forwarding", cfg.network.forwarding === "modern");
+    check(
+      "fabric servers carry the forwarding secret for FabricProxy-Lite",
+      fabricBackends.every(([, s]) =>
+        String(s.environment?.FABRIC_PROXY_SECRET ?? "").includes("FORWARDING_SECRET"),
+      ),
+    );
+    check(
+      "fabric servers install FabricProxy-Lite",
+      fabricBackends.every(([, s]) =>
+        String(s.environment?.MODRINTH_PROJECTS ?? "")
+          .split(",")
+          .some((r) => r.startsWith("fabricproxy-lite:")),
+      ),
+    );
+    check(
+      "fabric servers get no Paper patches",
+      fabricBackends.every(
+        ([, s]) =>
+          !s.environment?.PATCH_DEFINITIONS &&
+          !(s.volumes ?? []).some((v) => v.includes(":/patches")),
+      ),
+    );
+  }
+
+  if (neoforgeBackends.length) {
+    const patchPath = "proxy/patches/neoforge/proxy-compatible-forge.json";
+    const patch = generatedFiles(cfg)[patchPath];
+    check("neoforge servers get a Proxy-Compatible-Forge patch", !!patch);
+    const ops = patch ? (JSON.parse(patch).ops as { $put: { key: string; value: string } }[]) : [];
+    const value = (key: string) => ops.find((o) => o.$put.key === key)?.$put.value;
+    check(
+      "Proxy-Compatible-Forge runs the network's forwarding mode",
+      value("mode") === wiring.pcfMode,
+      `mode=${value("mode")}, want ${wiring.pcfMode}`,
+    );
+    check(
+      "Proxy-Compatible-Forge gets the secret exactly when the mode has one",
+      (value("secret") === "${CFG_FORWARDING_SECRET}") === wiring.usesSecret,
+    );
+    check(
+      "neoforge servers mount only their own patches",
+      neoforgeBackends.every(([, s]) => {
+        const patchMounts = (s.volumes ?? []).filter((v) => v.includes(":/patches"));
+        return patchMounts.length === 1 && patchMounts[0].startsWith("./proxy/patches/neoforge:");
+      }),
+    );
+    check(
+      "neoforge servers install Proxy-Compatible-Forge",
+      neoforgeBackends.every(([, s]) =>
+        String(s.environment?.MODRINTH_PROJECTS ?? "")
+          .split(",")
+          .some((r) => r.startsWith("proxy-compatible-forge:")),
+      ),
+    );
+    if (wiring.usesSecret) {
+      check(
+        "neoforge servers carry the forwarding secret",
+        neoforgeBackends.every(([, s]) =>
+          String(s.environment?.CFG_FORWARDING_SECRET ?? "").includes("FORWARDING_SECRET"),
+        ),
+      );
+    }
+  } else {
+    check(
+      "no Proxy-Compatible-Forge patch without neoforge servers",
+      !Object.keys(generatedFiles(cfg)).some((f) => f.startsWith("proxy/patches/neoforge/")),
     );
   }
 

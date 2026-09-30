@@ -62,6 +62,24 @@ async function writeEnv(root: string, secret: string): Promise<void> {
   await restrictToOwner(envPath);
 }
 
+/**
+ * BungeeGuard's token on a BungeeCord or Waterfall proxy: the plugin reads
+ * `token.yml` and generates a random token only when the file is missing. So
+ * writing the forwarding secret there, on every apply, makes the proxy send
+ * the token the backends expect — and a rotation reaches it the same way.
+ *
+ * Velocity needs none of this: its built-in BungeeGuard mode uses the
+ * forwarding secret file directly.
+ */
+export async function writeProxyToken(root: string, secret: string): Promise<void> {
+  const dir = join(root, "data", "proxy", "plugins", "BungeeGuard");
+  await mkdir(dir, { recursive: true });
+  const path = join(dir, "token.yml");
+  // JSON quoting is valid YAML and survives any character in the token.
+  await writeFile(path, `token: ${JSON.stringify(secret)}\n`, "utf8");
+  await restrictToOwner(path);
+}
+
 /** Ensures a secret exists, creating one if not. Returns [secret, created]. */
 export async function ensureSecret(
   root: string,

@@ -1,3 +1,4 @@
+import { runsPlugins } from "@cloud/schema";
 import type { CloudConfig } from "../types.ts";
 
 /**
@@ -25,9 +26,9 @@ export interface Preset {
   proxyModrinth?: string[];
   /** Hangar `slug:version` references appended to the proxy. */
   proxyHangar?: string[];
-  /** Plugin URLs appended to every existing group. */
+  /** Plugin URLs appended to every existing group that runs plugins (not Fabric). */
   allGroupPlugins?: string[];
-  /** Modrinth `slug:version` references appended to every existing group. */
+  /** Modrinth `slug:version` references appended to every existing plugin group. */
   allGroupModrinth?: string[];
   /**
    * Hangar `slug:version` references appended to every existing group.
@@ -79,13 +80,19 @@ export function applyPreset(cfg: CloudConfig, preset: Preset): CloudConfig {
 
   for (const groupName of Object.keys(next.groups)) {
     const group = next.groups[groupName];
-    if (preset.allGroupPlugins?.length) {
+    // "All groups" means all groups that run plugins. A Bukkit jar in a
+    // Fabric server is not loaded, and a Hangar reference is rejected by the
+    // schema — so adding one would turn `cloud add luckperms` into an
+    // invalid config for anyone with a Fabric group. Environment still
+    // applies: it is not a jar.
+    const plugins = runsPlugins(group.software);
+    if (preset.allGroupPlugins?.length && plugins) {
       group.plugins = mergeUnique(group.plugins, preset.allGroupPlugins);
     }
-    if (preset.allGroupModrinth?.length) {
+    if (preset.allGroupModrinth?.length && plugins) {
       group.modrinth = mergeUnique(group.modrinth, preset.allGroupModrinth);
     }
-    if (preset.allGroupHangar?.length) {
+    if (preset.allGroupHangar?.length && plugins) {
       group.hangar = mergeUnique(group.hangar, preset.allGroupHangar);
     }
     if (preset.allGroupEnv) {

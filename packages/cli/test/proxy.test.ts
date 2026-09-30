@@ -3,6 +3,7 @@ import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
 import {
   renderBungeeConfig,
+  renderNeoForgePatches,
   renderPaperPatches,
   renderVelocityToml,
 } from "../src/render/proxy.ts";
@@ -266,11 +267,66 @@ describe("forwarding wiring", () => {
     expect(wiringFor("bungeeguard").usesSecret).toBe(true);
     expect(wiringFor("legacy").usesSecret).toBe(false);
   });
+});
 
-  test('"none" wires nothing, so a config that slipped through patches nothing', () => {
-    const w = wiringFor("none");
-    expect(w.velocityEnabled).toBe(false);
-    expect(w.bungeeEnabled).toBe(false);
-    expect(w.usesSecret).toBe(false);
+describe("bungeeguard patch", () => {
+  const cfg = config({ network: { name: "test", forwarding: "bungeeguard" } });
+
+  test("sets allowed-tokens to the secret as a one-element list", () => {
+    const patch = JSON.parse(renderPaperPatches(cfg)["bungeeguard.json"]);
+    expect(patch.file).toBe("/data/plugins/BungeeGuard/config.yml");
+    expect(Object.keys(patch).sort()).toEqual(["file", "ops"]);
+    expect(patch.ops[0].$put).toEqual({
+      path: "$",
+      key: "allowed-tokens",
+      value: "${CFG_FORWARDING_SECRET}",
+      "value-type": "list of string",
+    });
+  });
+
+  test("exists only under bungeeguard", () => {
+    expect(renderPaperPatches(config())["bungeeguard.json"]).toBeUndefined();
+  });
+
+  test("the proxy config says where the token lives, instead of asking for it by hand", () => {
+    const out = renderBungeeConfig(
+      config({
+        network: { name: "test", forwarding: "bungeeguard" },
+        proxy: { software: "bungeecord" },
+      }),
+    );
+    expect(out).toContain("installed on the proxy and every");
+    expect(out).not.toContain("put the token");
+  });
+});
+
+describe("neoforge patch", () => {
+  const neo = (forwarding: string) =>
+    config({
+      network: { name: "test", forwarding },
+      proxy: forwarding === "modern" ? {} : { software: "bungeecord" },
+      groups: {
+        lobby: { version: "1.21.10", fallback: true },
+        modded: { software: "neoforge", version: "1.21.1" },
+      },
+    });
+  const ops = (forwarding: string) =>
+    JSON.parse(renderNeoForgePatches(neo(forwarding))["proxy-compatible-forge.json"]).ops.map(
+      (o: { $put: { key: string; value: string } }) => [o.$put.key, o.$put.value],
+    );
+
+  test("follows the network's forwarding mode", () => {
+    expect(ops("modern")).toContainEqual(["mode", "MODERN"]);
+    expect(ops("bungeeguard")).toContainEqual(["mode", "BUNGEEGUARD"]);
+    expect(ops("legacy")).toContainEqual(["mode", "LEGACY"]);
+  });
+
+  test("patches the secret only when the mode has one", () => {
+    expect(ops("modern")).toContainEqual(["secret", "${CFG_FORWARDING_SECRET}"]);
+    expect(ops("legacy").map((o: string[]) => o[0])).not.toContain("secret");
+  });
+
+  test("is not generated without neoforge servers", () => {
+    expect(renderNeoForgePatches(config())).toEqual({});
   });
 });

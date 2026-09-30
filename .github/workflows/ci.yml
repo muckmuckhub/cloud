@@ -64,7 +64,7 @@ jobs:
       - run: bun run links
 
   # A tag says v0.2.0 and the binary says 0.1.0 unless someone remembered to
-  # bump a constant. Nobody remembers. This runs before anything is compiled or
+  # bump package.json. Nobody remembers. This runs before anything is compiled or
   # published, so a forgotten bump costs a re-tag rather than a wrong release.
   version:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -78,12 +78,8 @@ jobs:
           want="${TAG#v}"
           fail=0
 
-          got=$(sed -n 's/^const VERSION = "\(.*\)";$/\1/p' packages/cli/src/index.ts)
-          if [ "$got" != "$want" ]; then
-            echo "::error::packages/cli/src/index.ts says VERSION = \"$got\", tag is $TAG"
-            fail=1
-          fi
-
+          # The binary reports packages/cli/package.json's version, so these
+          # two files are the whole list.
           for f in packages/cli/package.json packages/schema/package.json; do
             got=$(jq -r .version "$f")
             if [ "$got" != "$want" ]; then
@@ -155,10 +151,13 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with: { bun-version: latest }
       - run: bun install --frozen-lockfile
+      # --no-compile-autoload-dotenv: a binary that loads the project's .env
+      # at startup holds a stale FORWARDING_SECRET through a rotation.
       - name: Compile
         run: |
           bun build packages/cli/src/index.ts \
-            --compile --minify --target=${{ matrix.target.bun }} \
+            --compile --minify --no-compile-autoload-dotenv \
+            --target=${{ matrix.target.bun }} \
             --outfile dist/cloud-${{ matrix.target.name }}${{ matrix.target.ext }}
       - name: Checksum
         run: |

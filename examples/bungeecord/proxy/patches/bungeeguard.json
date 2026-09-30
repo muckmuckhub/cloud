@@ -1,0 +1,13 @@
+{
+  "file": "/data/plugins/BungeeGuard/config.yml",
+  "ops": [
+    {
+      "$put": {
+        "path": "$",
+        "key": "allowed-tokens",
+        "value": "${CFG_FORWARDING_SECRET}",
+        "value-type": "list of string"
+      }
+    }
+  ]
+}

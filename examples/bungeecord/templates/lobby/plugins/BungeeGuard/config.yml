@@ -1,11 +1,7 @@
 # BungeeGuard checks that incoming connections carry a known token.
 #
-# The token itself is NOT here: it lives in proxy/forwarding.secret, which is
-# gitignored and per-machine, and every backend receives it as the environment
-# variable CFG_FORWARDING_SECRET. Committing it to a template would put a
-# credential in git, which is exactly what the secret handling avoids.
-#
-# Paste the value of `cat proxy/forwarding.secret` in place of the placeholder
-# below, or leave the template out and let the plugin generate its own config.
-allowed-tokens:
-  - "PUT-THE-FORWARDING-SECRET-HERE"
+# The token is NOT here, and does not need to be: `cloud apply` sets
+# allowed-tokens to the forwarding secret on every start, after this template
+# is copied in. Keeping the credential out of a file that lives in git is the
+# point. What belongs here is everything else — the kick messages, say.
+invalid-token-kick-message: "&cUnable to authenticate with the lobby."

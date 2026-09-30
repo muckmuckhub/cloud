@@ -54,10 +54,11 @@ Plugin files are on the host either way — see [Server files](server-files.md).
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `software` | enum | `"velocity"` | Also `bungeecord`, `waterfall`. See [Proxies](proxies.md). |
-| `version` | string | `"3.4.0-SNAPSHOT"` | Pins Velocity only. Not `latest` — that resolves to a 4.x snapshot. |
+| `version` | string | `"3.5.1"` | Pins Velocity only. Not `latest` — that resolves to a 4.x snapshot. |
 | `java` | int | derived | Override the container's Java version. |
 | `memory` | string | `"512m"` | Looks like `512M` or `4G`. |
 | `memory_limit` | string | derived | Container memory cap. See [Memory](#memory). |
+| `pin` | string | — | Image digest pin. See [Pinning images](#pinning-images). |
 | `plugins` | string[] | `[]` | Direct download URLs. |
 | `modrinth` | string[] | `[]` | `slug:version` — see [Plugins](#plugins). |
 | `hangar` | string[] | `[]` | `slug:version` — see [Plugins](#plugins). |
@@ -79,10 +80,11 @@ digits and dashes, starting with a letter.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `software` | enum | `"paper"` | Also `folia`, `purpur`, `spigot`. |
+| `software` | enum | `"paper"` | Also `folia`, `purpur`, `spigot`, and the mod loaders `fabric`, `neoforge` — see [Mod servers](#mod-servers-fabric-and-neoforge). |
 | `version` | string | — | Required. Looks like `1.21.10`. |
 | `memory` | string | `"2G"` | JVM heap. |
 | `memory_limit` | string | derived | Container memory cap. See [Memory](#memory). |
+| `pin` | string | — | Image digest pin. See [Pinning images](#pinning-images). |
 | `java` | int | derived | Override the container's Java version. |
 | `min` | int | `1` | How many instances to run. 0–50. |
 | `fallback` | bool | `false` | Players land here. Exactly one group must set it. |
@@ -92,6 +94,26 @@ digits and dashes, starting with a letter.
 | `modrinth` | string[] | `[]` | `slug:version` — see [Plugins](#plugins). |
 | `hangar` | string[] | `[]` | `slug:version` — see [Plugins](#plugins). |
 | `env` | table | `{}` | Extra environment variables, merged last so they win. |
+
+### Mod servers: Fabric and NeoForge
+
+`software = "fabric"` and `software = "neoforge"` run mods instead of plugins.
+Neither has Paper's built-in proxy support, so each trusts the proxy through a
+mod that `cloud apply` installs and configures:
+
+| | Fabric | NeoForge |
+|---|---|---|
+| Proxy mod | FabricProxy-Lite, pinned per Minecraft version | Proxy-Compatible-Forge, pinned |
+| Forwarding | `modern` only | any |
+| Secret reaches it through | the environment | its config, patched on every start |
+| Minimum version | one FabricProxy-Lite supports (1.21+ built in) | 1.20.1 |
+
+On both, `plugins` URLs are downloaded as mods, `modrinth` references resolve
+their required dependencies, and `hangar` is rejected — Hangar serves Paper
+plugins. The directory on the host is `data/<server>/config` instead of
+`plugins`, since that is where mods keep their settings. Listing the proxy mod
+yourself in `modrinth` replaces the pinned one. See
+[examples/modded/](https://github.com/muckmuckhub/cloud/tree/main/examples/modded).
 
 ### Plugins
 
@@ -129,6 +151,32 @@ renderers are the usual ones). It must be larger than `memory`. A container
 that hits its cap is killed and restarted by Docker — see
 [Troubleshooting](troubleshooting.md#it-restarts-with-exit-code-137).
 
+### Pinning images
+
+Images are derived: `itzg/minecraft-server:java21` for a 1.21 group. That tag
+moves whenever the image is rebuilt, so the same `cloud.toml` can run a
+different image next month. To freeze it, pin the digest:
+
+```toml
+[groups.lobby]
+version = "1.21.10"
+pin     = "java21@sha256:7dd4e72e6daf7c98aedf39fd9c9744b4036dee0d9a8b49db4009919b5d2ea89d"
+```
+
+Get the current digest for a tag with:
+
+```sh
+docker buildx imagetools inspect itzg/minecraft-server:java21 --format "{{json .Manifest.Digest}}"
+docker buildx imagetools inspect itzg/mc-proxy:java21 --format "{{json .Manifest.Digest}}"
+```
+
+The pin names its tag on purpose. With a digest, Docker ignores the tag, so a
+bare digest would keep running the Java 21 image after you moved `version` to
+a Minecraft release that needs Java 25. Validation compares the pinned tag
+with the one the config derives and refuses a mismatch — update the pin
+together with `version` or `java`. Pins are optional; most networks do not
+need one.
+
 ### `static` does not mean "persistent"
 
 Every group keeps its data across restarts. `static` chooses *where* that data
@@ -153,6 +201,9 @@ not discarded.
    another entry on the same host port and protocol.
 6. `memory_limit`, where set, is larger than `memory`.
 7. `modrinth` and `hangar` entries are `slug:version` with a version.
+8. A `pin` names the Java tag the config derives (`java21@sha256:…`).
+9. `fabric` needs `forwarding = "modern"`; `neoforge` needs Minecraft 1.20.1+;
+   neither can use `hangar`.
 
 Validation failures print every problem with its path and exit without touching
 Docker:
@@ -169,6 +220,7 @@ These are computed, and putting them in `cloud.toml` is not possible:
 
 - Backend ports. Every backend listens on 25565 in its own network namespace.
 - Docker image names and Java versions, derived from `software` + `version`.
+  A `pin` can freeze the digest, but not choose a different image.
 - `online-mode` on backends — always `false`; the proxy authenticates.
 - The forwarding secret — generated locally, never in `cloud.toml`.
 
@@ -188,5 +240,5 @@ Derived from the version, overridable with `java`:
 version. Use the table above to translate before changing anything.
 
 Velocity 3.x runs on Java 21; Velocity 4.x needs 25. `version = "latest"` for
-Velocity currently resolves to a 4.0.0 snapshot, which is why the default is a
-pinned 3.x release instead.
+Velocity currently resolves to a 4.x snapshot, which is why the default is a
+pinned stable 3.x release instead.

@@ -5,7 +5,9 @@
 # The important difference is forwarding. Modern forwarding is a Velocity
 # protocol and does not exist in BungeeCord, so this uses "bungeeguard":
 # BungeeCord-style forwarding plus a token that the BungeeGuard plugin checks
-# on both ends. Plain "legacy" also works and needs no plugin, but then the
+# on both ends. `cloud apply` installs the plugin on the proxy and every
+# backend and sets its token to the forwarding secret, so there is nothing to
+# copy by hand. Plain "legacy" also works and needs no plugin, but then the
 # only thing keeping strangers out of your backends is that no port is
 # published for them.
 
@@ -21,9 +23,6 @@ software = "bungeecord"        # or "waterfall"
 version  = "latest"            # tracks the image's build; pins Velocity only
 memory   = "512m"
 
-# BungeeGuard has to be installed on the proxy as well as on every backend,
-# and both sides need the token from proxy/forwarding.secret.
-plugins  = ["https://github.com/Aeltumn/BungeeGuard/releases/latest/download/BungeeGuard.jar"]
 
 [groups.lobby]
 software = "paper"
@@ -35,7 +34,6 @@ fallback = true                # players land here; failover target
 # there reaches all of them. The template owns those files — editing the copies
 # under data/lobby-1/ is pointless, they are overwritten on the next start.
 template = "lobby"
-plugins  = ["https://github.com/Aeltumn/BungeeGuard/releases/latest/download/BungeeGuard.jar"]
 
 [groups.survival]
 software = "paper"
@@ -43,4 +41,3 @@ version  = "1.21.10"
 memory   = "4G"
 min      = 1
 static   = true                # keeps its world across restarts
-plugins  = ["https://github.com/Aeltumn/BungeeGuard/releases/latest/download/BungeeGuard.jar"]
