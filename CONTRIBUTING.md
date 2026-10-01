@@ -76,7 +76,8 @@ bun run typecheck
 bun test
 bun run scripts/check-invariants.ts   # after touching anything in render/
 bun run examples                      # regenerate examples/ after a renderer change
-bun run links                         # preset download URLs still serve jars
+bun run links                         # pinned downloads still resolve
+bun run demos                         # re-record the terminal demos (Docker)
 ```
 
 ## Docs
@@ -105,8 +106,15 @@ deploy with a warning rather than failing — so a fork that does not want a doc
 site is not permanently red.
 
 `links` needs the network, so it is not part of the PR gate — CI runs it
-weekly. If it goes red, a preset needs its pinned version bumped; each preset's
-comment names the upstream API that lists the current one.
+weekly. It checks every pinned download: the presets, and the jars `cloud`
+installs by itself — BungeeGuard, FabricProxy-Lite (one per Minecraft version
+range) and Proxy-Compatible-Forge. If it goes red, bump the pin; each one's
+comment names the upstream page that lists the current version.
+
+The terminal demos in the docs are recorded with VHS from `demos/*.tape`,
+as one story about one network. After a change to command output, re-record
+the chapters it shows up in — see `demos/README.md`. `bun run check`
+verifies that every video a page embeds exists.
 
 `check-invariants.ts` is the important one: it turns the constraints above into
 assertions, renders every example, and fails if the artifacts checked into

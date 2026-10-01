@@ -3,12 +3,12 @@ import { join } from "node:path";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { CloudConfigSchema } from "@cloud/schema";
 import { CONFIG_FILE, loadConfig, requireRoot } from "../config.ts";
-import { renderCloudToml } from "../render/config.ts";
+import { editCloudToml } from "../edit.ts";
 import { plan, summarise } from "../plan.ts";
 import { compose } from "../docker.ts";
 import { resolveProvider, NoProviderError } from "../ai/provider.ts";
 import { fetchPaperVersions } from "../versions.ts";
-import { c, confirm, fail, info, sym } from "../ui.ts";
+import { c, confirm, fail, info, sym, warn } from "../ui.ts";
 import { hasFlag, optionValue, positionals } from "../args.ts";
 import { formatDiff } from "../diff.ts";
 
@@ -72,8 +72,10 @@ export async function askCmd(argv: string[]): Promise<void> {
     );
   }
 
-  const nextToml = renderCloudToml(parsed.data);
   const prevToml = await readFile(join(root, CONFIG_FILE), "utf8");
+  // The model returns a whole config; only what differs is written back.
+  const edited = editCloudToml(prevToml, parsed.data);
+  const nextToml = edited.text;
   if (nextToml === prevToml) {
     info(c.dim("No change — the config already does that."));
     return;
@@ -90,6 +92,14 @@ export async function askCmd(argv: string[]): Promise<void> {
   }
 
   const yes = hasFlag(argv, "-y", "--yes");
+  if (!edited.inPlace) {
+    // Said before the question, so nobody loses their comments by surprise.
+    warn(
+      `${CONFIG_FILE} cannot be edited in place: ${edited.reason}.\n` +
+        `  It will be rewritten in canonical form, without your comments and layout.\n` +
+        `  To keep them, answer no and add the lines above by hand.`,
+    );
+  }
   if (!yes && !(await confirm(`Write ${CONFIG_FILE}?`, false))) {
     info("Aborted. Nothing written.");
     return;

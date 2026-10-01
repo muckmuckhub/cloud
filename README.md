@@ -378,8 +378,8 @@ signature is the second line of defence; not publishing the port is the first.
 `CLOUD_AI_MODEL` overrides the model. `CLOUD_AI_PROVIDER=none` disables the
 layer entirely.
 
-The AI never applies anything. `ask` prints a diff and stops; `apply` never
-calls a model. Version strings are constrained to the live PaperMC API rather
+The AI never applies anything. `ask` shows a diff and, if you confirm, writes
+`cloud.toml` — nothing more; `apply` never calls a model. Version strings are constrained to the live PaperMC API rather
 than the model's memory. Logs passed to `explain` are treated as data to
 summarise, never as instructions to follow.
 

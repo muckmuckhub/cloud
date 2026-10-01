@@ -90,6 +90,28 @@ icacls proxy\forwarding.secret
 wrong place produces confusing failures. Don't override this with
 `core.autocrlf=true` for this repo.
 
+## Memory
+
+Docker Desktop runs every container in one WSL 2 VM, and that VM gets a
+fixed share of your RAM — set in `%USERPROFILE%\.wslconfig`, not in
+Docker Desktop:
+
+```ini
+[wsl2]
+memory=10GB
+```
+
+Then quit Docker Desktop completely (tray icon → Quit), run
+`wsl --shutdown`, and start Docker Desktop again.
+
+Each server needs a bit more than its `memory` (the JVM heap): a `1G`
+Paper server sits at about 1.25G. `cloud apply` adds up the network's
+memory caps and warns when they exceed what Docker has. Take the warning
+seriously on WSL: a WSL VM that runs out of memory does not kill one
+process the way a Linux host would. It swaps until the whole VM stops
+answering — Docker, every container, and any Linux distro you use — and
+Docker Desktop reports `500 Internal Server Error` for everything.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -100,6 +122,8 @@ wrong place produces confusing failures. Don't override this with
 | Worlds save slowly, players see lag | `storage = "bind"` on a Windows path. Switch to `volume` and re-run `cloud apply`. |
 | `cloud` not recognised after install | Open a new terminal; PATH changes don't apply to existing sessions. |
 | Port 25565 already in use | Something else is bound to it. Change `entry_port` in `cloud.toml`. |
+| Every docker command answers `500 Internal Server Error`, or hangs | The WSL VM ran out of memory and froze. Quit Docker Desktop, `wsl --shutdown`, start it again — then give the VM more memory or the network less. See [Memory](#memory). |
+| Docker Desktop does not start after `wsl --shutdown` | The previous instance is still running without its VM. Quit it from the tray icon (or end `Docker Desktop` in Task Manager), then start it again. |
 
 ## Not supported
 

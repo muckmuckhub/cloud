@@ -2,12 +2,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CloudConfigSchema } from "@cloud/schema";
 import { CONFIG_FILE, loadConfig, requireRoot } from "../config.ts";
-import { renderCloudToml } from "../render/config.ts";
+import { editCloudToml } from "../edit.ts";
 import { plan, summarise } from "../plan.ts";
 import { formatDiff } from "../diff.ts";
 import { PRESETS } from "../presets/registry.ts";
 import { applyPreset, PresetError } from "../presets/types.ts";
-import { c, confirm, fail, info, sym } from "../ui.ts";
+import { c, confirm, fail, info, sym, warn } from "../ui.ts";
 import { hasFlag, positionals } from "../args.ts";
 
 /**
@@ -63,7 +63,9 @@ export async function add(argv: string[]): Promise<void> {
   }
 
   const prevToml = await readFile(join(root, CONFIG_FILE), "utf8");
-  const nextToml = renderCloudToml(parsed.data);
+  // Edited in place: only the lines the preset changes, comments kept.
+  const edited = editCloudToml(prevToml, parsed.data);
+  const nextToml = edited.text;
   if (prevToml === nextToml) {
     info(c.dim(`"${name}" is already applied — nothing to change.`));
     return;
@@ -83,6 +85,14 @@ export async function add(argv: string[]): Promise<void> {
   }
 
   const yes = hasFlag(argv, "-y", "--yes");
+  if (!edited.inPlace) {
+    // Said before the question, so nobody loses their comments by surprise.
+    warn(
+      `${CONFIG_FILE} cannot be edited in place: ${edited.reason}.\n` +
+        `  It will be rewritten in canonical form, without your comments and layout.\n` +
+        `  To keep them, answer no and add the lines above by hand.`,
+    );
+  }
   if (!yes && !(await confirm(`Add "${name}"?`, false))) {
     info("Aborted. Nothing written.");
     return;

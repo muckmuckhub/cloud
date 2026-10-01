@@ -212,9 +212,14 @@ Docker:
 
 ```
 error cloud.toml is invalid:
-  groups: exactly one group must set fallback = true (players need somewhere to land)
-  groups.smp.min: a static group keeps its own world, so it cannot have more than one instance
+  groups: exactly one group must set fallback = true (players need somewhere to
+    land)
+  groups.smp.min: a static group keeps its own world, so it cannot have more
+    than one instance
 ```
+
+Long messages are wrapped at word boundaries to the terminal's width, with
+continuation lines indented under the problem they belong to.
 
 ## Derived, never configured
 

@@ -68,6 +68,7 @@ Write cloud.toml? [y/N]
 ```
 
 Saying yes writes `cloud.toml` and nothing else. You still run `cloud apply`.
+Only the values that change are written; your comments and layout stay.
 
 ## `cloud explain`
 

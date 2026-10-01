@@ -28,6 +28,13 @@ cloud init --manual              # skip the AI wizard even if a provider exists
 cloud init --prompt "velocity proxy, 3 paper lobbies, one survival"
 ```
 
+Without a provider it asks for the network name, port, MOTD and Minecraft
+version, then each server: its memory, whether it is *pooled* (lobbies,
+minigames) or *single* (survival — its own browsable directory), and for a
+pooled group how many instances to run. That defaults to 2: the smallest
+group that keeps players when one instance goes down, and the minimum for
+a rolling restart.
+
 Also creates `templates/` and a `.gitignore` covering secrets, worlds and
 generated files. Refuses to run if `cloud.toml` already exists.
 
@@ -51,6 +58,18 @@ cloud apply --rotate-secret      # new forwarding secret, then restart
 
 `apply` is convergent: running it twice changes nothing the second time.
 
+Before asking, it warns about two things that are still avoidable at that
+point:
+
+- **Recreating a multi-instance group all at once** — when an existing
+  network's compose file changes, every player on that group would drop.
+  It suggests `--rolling`. A first apply, with nothing running yet, does
+  not warn.
+- **Not enough memory in Docker** — when the network's memory caps add up
+  to more than Docker has, the servers start and are then killed one by
+  one as their heaps fill. On Docker Desktop the limit is the VM's; see
+  [Windows](windows.md#memory).
+
 A `cloud.toml` that cannot work is refused before anything starts, with
 every problem listed and what to do about it:
 
@@ -61,7 +80,24 @@ every problem listed and what to do about it:
 <video src="assets/demos/add.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud add, then cloud add viaversion"></video>
 
 With no argument, lists the available presets. With one, merges it into
-`cloud.toml`, shows the diff, and waits for confirmation.
+`cloud.toml`, shows the diff, and waits for confirmation. The diff shows the
+lines that change, with one line of context — not the whole file.
+
+A preset that installs plugins on every group skips Fabric and NeoForge
+servers, which cannot load them; environment variables still reach them.
+
+`cloud add` edits `cloud.toml` in place: it changes only the lines the preset
+needs and leaves your comments, blank lines and alignment exactly as they
+were. A new key goes after the last key of its table, lined up with its
+neighbours; a new group or table is written the way `cloud init` would.
+Running the same preset twice changes nothing.
+
+It edits `[table]` headers and `key = value` lines. A file written with
+inline tables (`env = { ... }`), dotted keys (`env.MODE = ...`) or arrays of
+tables cannot always be edited that way; then `cloud add` says so before it
+asks, and writing would replace the file with its canonical form. Every
+in-place edit is checked before anything is written: the result must mean
+exactly the new config, or it is not used.
 
 ```sh
 cloud add                        # list them
@@ -188,8 +224,13 @@ These two need an AI provider. Everything above works without one.
 
 ### `cloud ask "<request>"`
 
-Proposes a change to `cloud.toml` as a diff, and stops. It never applies
-anything and never calls Docker.
+Proposes a change to `cloud.toml` as a diff. If you confirm, it writes
+`cloud.toml` — and stops there: it never applies anything and never calls
+Docker. `cloud apply` is still your step.
+
+Like `cloud add`, it edits the file in place — the model returns a whole
+config, but only the values that differ are written back, and your comments
+and layout stay.
 
 ```sh
 cloud ask "add a creative server with 2G"
