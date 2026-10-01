@@ -94,6 +94,12 @@ jobs:
             exit 1
           fi
           echo "version $want matches $TAG"
+      # Before anything is compiled, like the version: a release without notes
+      # costs a re-tag here, not a published release that says nothing.
+      - name: CHANGELOG.md must describe this version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: sh scripts/release-notes.sh "$TAG" > /dev/null
 
   # The installers are release assets, so the script someone pipes into a shell
   # is versioned alongside the binaries it downloads. A tagged installer then
@@ -122,9 +128,16 @@ jobs:
           grep -q "else { \"${TAG}\" }" out/install.ps1
           chmod +x out/install.sh
           echo "stamped ${TAG} into both installers"
+      - name: Release notes from CHANGELOG.md
+        env:
+          TAG: ${{ github.ref_name }}
+        run: sh scripts/release-notes.sh "$TAG" > out/notes.md
+      # The release text is set here and only here. The build jobs attach
+      # their binaries to the same release without touching the text; when
+      # every job generated notes, each one appended another copy.
       - uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: out/notes.md
           fail_on_unmatched_files: true
           files: |
             out/install.sh
@@ -171,7 +184,7 @@ jobs:
           subject-path: dist/cloud-${{ matrix.target.name }}${{ matrix.target.ext }}
       - uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          # No body here: the installers job writes it from CHANGELOG.md.
           # Without this a renamed compile output publishes a release with no
           # binary in it, and the installer 404s for everyone.
           fail_on_unmatched_files: true

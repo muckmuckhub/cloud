@@ -129,6 +129,9 @@ them.
 1. Bump the version in two places — `packages/cli/package.json` and
    `packages/schema/package.json` — and commit. `cloud --version` reads the
    first, and a test fails if the two disagree.
+   In the same commit, add a `## 0.2.1` section (your version) to
+   `CHANGELOG.md`: it becomes the release's text, word for word.
+   `sh scripts/release-notes.sh 0.2.1` prints exactly what will be published.
 2. Tag and push:
 
    ```sh
@@ -136,7 +139,8 @@ them.
    git push origin v0.2.0
    ```
 
-CI refuses to publish if those two do not match the tag, before anything is
+CI refuses to publish if those two do not match the tag, or if
+`CHANGELOG.md` has no section for it, before anything is
 compiled, so a forgotten bump costs a re-tag rather than a release whose
 `cloud --version` lies. To fix one:
 
@@ -153,7 +157,8 @@ Pushing the tag then makes CI:
    each with a SHA-256 checksum and a build provenance attestation;
 4. publish `install.sh` and `install.ps1` as release assets, with the tag
    stamped in as their default version;
-5. create the GitHub release with generated notes and attach everything.
+5. create the GitHub release with its `CHANGELOG.md` section as the text,
+   and attach everything.
 
 The release is created by the workflow — there is nothing to click, and no
 domain, gist or separate hosting to maintain. Watch it in the Actions tab; if
