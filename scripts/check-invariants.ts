@@ -5,6 +5,7 @@
  * modern-forwarding wiring, fails CI here rather than in someone's production
  * network six weeks later.
  */
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -30,6 +31,11 @@ import {
   proxyConfigFile,
   wiringFor,
 } from "../packages/cli/src/render/forwarding.ts";
+
+/** True when git would ignore the path. False outside a git checkout. */
+function gitIgnores(path: string): boolean {
+  return spawnSync("git", ["check-ignore", "-q", path]).status === 0;
+}
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ""): void {
@@ -505,6 +511,14 @@ for (const example of await readdir(examplesDir)) {
       `${rel} matches the renderer`,
       onDisk === body,
       onDisk === null ? "missing — run `bun run examples`" : "stale — run `bun run examples`",
+    );
+    // On disk is not in the repository. A .gitignore rule meant for users'
+    // projects once kept a new example's docker-compose.yml out of every
+    // commit: this check passed locally and failed in CI's clean checkout.
+    check(
+      `${rel} can be committed`,
+      !gitIgnores(abs),
+      "ignored by .gitignore — it would never reach CI. Add an exception for examples/.",
     );
   }
 }

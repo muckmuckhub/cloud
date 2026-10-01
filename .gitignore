@@ -4,6 +4,10 @@ dist/
 proxy/forwarding.secret
 data/
 docker-compose.yml
+# ...except in examples/, where the generated files are the point: CI compares
+# them with the renderers. Without this a new example's compose file was never
+# committed, and CI failed on a file that existed on every machine but its own.
+!examples/*/docker-compose.yml
 
 # Docs site build output.
 site/
