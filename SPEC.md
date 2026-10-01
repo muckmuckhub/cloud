@@ -3,7 +3,7 @@
 **Version 1.**
 
 Changelog: `network.storage`, `proxy.ports` and `proxy.env` added in tool
-0.1.0. After 0.1.0: `memory_limit`, `modrinth`, `hangar` and `pin` added to
+0.1.0. In 0.2.0: `memory_limit`, `modrinth`, `hangar` and `pin` added to
 `[proxy]` and `[groups.<name>]`, and `fabric` and `neoforge` to
 `groups.<name>.software` (additive and optional); the `proxy.version`
 default moved from `3.4.0-SNAPSHOT` to the stable `3.5.1`; `forwarding =
