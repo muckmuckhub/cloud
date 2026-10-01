@@ -25,7 +25,7 @@ ${c.dim("SETUP")}
 
 ${c.dim("OPERATE")}
   status [--json]      What is running, with player counts
-  logs [server] [-f]   Tail logs (defaults to the proxy)
+  logs [server] [-f] [--tail N]  Tail logs (defaults to the proxy, 200 lines)
   exec <server> "<cmd>"  Run a Minecraft console command via RCON
   restart [server]     Restart one service or everything
   restart <group> --rolling   Restart a group one instance at a time

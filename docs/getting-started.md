@@ -21,6 +21,8 @@ before doing so.
 
 `--manual` skips the AI wizard even when a provider is available.
 
+<video src="assets/demos/init.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud init --manual"></video>
+
 You can also skip `init` entirely and write `cloud.toml` by hand — see
 [Configuration](configuration.md).
 
@@ -41,6 +43,8 @@ This:
 Nothing is written before you confirm. `cloud apply --dry-run` stops at the
 diff and touches nothing at all.
 
+<video src="assets/demos/apply.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud apply --dry-run, then cloud apply"></video>
+
 ## 4. Connect
 
 ```sh
@@ -50,17 +54,22 @@ cloud status
 ```
 mynetwork · port 25565 · modern forwarding
 
-SERVICE   STATE    HEALTH   UPTIME
-proxy     running  healthy  About a minute
-lobby     running  healthy  About a minute
-survival  running  healthy  About a minute
+SERVICE   STATE    HEALTH   PLAYERS  UPTIME
+lobby-1   running  healthy  0/20     About a minute
+lobby-2   running  healthy  0/20     About a minute
+proxy     running  healthy  -        About a minute
+survival  running  healthy  0/20     About a minute
+
+  0 players online
 ```
+
+<video src="assets/demos/status.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud status and cloud status --json"></video>
 
 Join `localhost:25565`. You land on the fallback group. `/server survival`
 moves you between backends.
 
 First boot takes a minute or two: the image downloads the server jar and Paper
-generates a world. `cloud logs lobby -f` shows the progress.
+generates a world. `cloud logs lobby-1 -f` shows the progress.
 
 ## What is on disk now
 
@@ -71,7 +80,8 @@ mynetwork/
   .gitignore
   data/
     proxy/plugins/            plugin files, editable
-    lobby/plugins/
+    lobby-1/plugins/
+    lobby-2/plugins/
     survival/                 this group is static: its whole directory
   templates/                  optional seed files
   docker-compose.yml          GENERATED

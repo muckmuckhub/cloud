@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ConfigError, findRoot, loadConfig, saveConfig } from "../src/config.ts";
+import { ConfigError, findRoot, loadConfig, saveConfig, wrapIssue } from "../src/config.ts";
 import { renderCloudToml } from "../src/render/config.ts";
 import { config, withTempDir } from "./helpers.ts";
 
@@ -137,5 +137,26 @@ describe("renderCloudToml", () => {
   test("is stable — rendering the same config twice is byte-identical", () => {
     const cfg = config({ proxy: { ports: ["19132:19132/udp"] } });
     expect(renderCloudToml(cfg)).toBe(renderCloudToml(cfg));
+  });
+});
+
+describe("wrapIssue", () => {
+  const long =
+    'network.forwarding: forwarding = "modern" only exists in Velocity, but proxy.software is "bungeecord". Use forwarding = "bungeeguard"';
+
+  test("never breaks a word, and indents continuation lines", () => {
+    const out = wrapIssue(long, 60).split("\n");
+    expect(out.length).toBeGreaterThan(1);
+    expect(out.every((l) => l.length <= 59)).toBe(true);
+    expect(out[0]).toStartWith("  network.forwarding:");
+    expect(out.slice(1).every((l) => l.startsWith("    "))).toBe(true);
+    // Every word survives intact.
+    expect(out.map((l) => l.trim()).join(" ")).toBe(long);
+  });
+
+  test("leaves a short issue on one line", () => {
+    expect(wrapIssue("groups: at least one group is required", 100)).toBe(
+      "  groups: at least one group is required",
+    );
   });
 });

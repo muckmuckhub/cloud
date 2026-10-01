@@ -17,6 +17,7 @@ import { proxyConfigFile } from "./render/forwarding.ts";
 import { containerLimitMiB, memoryMiB, runsPlugins } from "@cloud/schema";
 import type { CloudConfig } from "./types.ts";
 import { c } from "./ui.ts";
+import { formatDiff } from "./diff.ts";
 
 export interface FileChange {
   path: string;
@@ -92,6 +93,23 @@ export function rollingPlan(cfg: CloudConfig): { group: string; instances: strin
     if (g.min > 1) plan.push({ group, instances: instanceNames(group, g.min) });
   }
   return plan;
+}
+
+/**
+ * Multi-instance groups a plain `apply` would recreate all at once.
+ *
+ * Only when docker-compose.yml is being *changed*. A first apply creates it,
+ * and warned "every player on them drops" about a network with no players and
+ * no containers yet — the first thing a new user saw. A compose file deleted
+ * by hand while the network runs slips through; that is rare, and the
+ * warning is advice, not a safeguard.
+ */
+export function recreatedAtOnce(
+  changes: FileChange[],
+  cfg: CloudConfig,
+): { group: string; instances: string[] }[] {
+  const compose = changes.find((ch) => ch.path === "docker-compose.yml");
+  return compose && compose.prev !== null ? rollingPlan(cfg) : [];
 }
 
 export interface MemoryBudget {
@@ -269,28 +287,7 @@ export function renderDiff(ch: FileChange): string {
     const n = ch.next.split("\n").length;
     return `${c.green("+")} ${c.bold(ch.path)} ${c.dim(`(new, ${n} lines)`)}`;
   }
-  const a = ch.prev.split("\n");
-  const b = ch.next.split("\n");
-  let start = 0;
-  while (start < a.length && start < b.length && a[start] === b[start]) start++;
-  let endA = a.length - 1;
-  let endB = b.length - 1;
-  while (endA >= start && endB >= start && a[endA] === b[endB]) {
-    endA--;
-    endB--;
-  }
-  const removed = a.slice(start, endA + 1);
-  const added = b.slice(start, endB + 1);
-
-  const lines = [`${c.yellow("~")} ${c.bold(ch.path)}`];
-  const cap = 40;
-  for (const l of removed.slice(0, cap)) lines.push(c.red(`  - ${l}`));
-  if (removed.length > cap)
-    lines.push(c.dim(`  … ${removed.length - cap} more removed`));
-  for (const l of added.slice(0, cap)) lines.push(c.green(`  + ${l}`));
-  if (added.length > cap)
-    lines.push(c.dim(`  … ${added.length - cap} more added`));
-  return lines.join("\n");
+  return `${c.yellow("~")} ${c.bold(ch.path)}\n${formatDiff(ch.prev, ch.next, { cap: 40 })}`;
 }
 
 export function summarise(root: string, changes: FileChange[]): string {

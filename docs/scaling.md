@@ -54,6 +54,11 @@ Each instance is recreated on its own and must report healthy before the next
 one is touched. Players on the instance being replaced are moved to a sibling
 by the failover list above, so the group stays available the whole time.
 
+Here a preset adds ViaVersion to both groups, and the change is rolled out —
+the two lobbies one after the other, then the single survival server:
+
+<video src="assets/demos/add.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud add viaversion, rolled out with cloud apply --rolling"></video>
+
 Without `--rolling`, `cloud apply` recreates everything at once and says so
 first:
 
@@ -86,6 +91,17 @@ error lobby-1 was still not ready after 300s.
 
 The rest of the group keeps running the previous version. A bad update costs
 you one instance instead of the whole group.
+
+### Restarting without a change
+
+Plugin files or a template changed, but `cloud.toml` did not — so there is
+nothing to apply, only a restart. The same one-at-a-time rule:
+
+```sh
+cloud restart lobby --rolling
+```
+
+<video src="assets/demos/restart.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud restart survival, then cloud restart lobby --rolling"></video>
 
 ## What rolling updates cannot do
 

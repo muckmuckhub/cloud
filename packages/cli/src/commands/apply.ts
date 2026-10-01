@@ -5,6 +5,7 @@ import {
   memoryBudget,
   memoryWarning,
   plan,
+  recreatedAtOnce,
   rollingPlan,
   seedBungeeGuard,
   seedNeoForge,
@@ -86,8 +87,8 @@ export async function apply(argv: string[]): Promise<void> {
   // Recreating three lobbies at once is an outage nobody asked for. Say so
   // while it is still avoidable — which includes during a dry run, since that
   // is where someone looks before deciding how to run the real thing.
-  if (!rolling && changes.some((ch) => ch.path === "docker-compose.yml")) {
-    const cyclable = rollingPlan(cfg);
+  if (!rolling) {
+    const cyclable = recreatedAtOnce(changes, cfg);
     if (cyclable.length) {
       info(
         c.yellow(

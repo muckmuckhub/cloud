@@ -11,6 +11,8 @@ internet ──▶ :25565 ──▶ velocity ──┬──▶ lobby
                                    └──▶ survival
 ```
 
+![cloud apply: from one file to a running network](docs/assets/demos/apply.gif)
+
 **Documentation:** https://muckmuckhub.github.io/cloud — install, configuration
 reference, scaling, forwarding, troubleshooting. Source under [docs/](docs/).
 
@@ -89,7 +91,7 @@ not a broken deploy.
 | `cloud apply --rolling` | Update multi-instance groups one instance at a time. |
 | `cloud apply --rotate-secret` | New forwarding secret, then restart every backend. |
 | `cloud status [--json]` | What is running, player counts, and what should be but isn't. |
-| `cloud logs [server] [-f]` | Tail logs. Defaults to the proxy. |
+| `cloud logs [server] [-f] [--tail N]` | Tail logs. Defaults to the proxy and 200 lines. |
 | `cloud exec <server> "<cmd>"` | Console command via RCON. |
 | `cloud restart <group> --rolling` | One instance at a time, waiting for each to be healthy. |
 | `cloud down [--volumes]` | Stop. `--volumes` deletes worlds and asks twice. |

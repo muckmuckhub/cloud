@@ -4,6 +4,7 @@ import { CloudConfigSchema } from "@cloud/schema";
 import { CONFIG_FILE, loadConfig, requireRoot } from "../config.ts";
 import { renderCloudToml } from "../render/config.ts";
 import { plan, summarise } from "../plan.ts";
+import { formatDiff } from "../diff.ts";
 import { PRESETS } from "../presets/registry.ts";
 import { applyPreset, PresetError } from "../presets/types.ts";
 import { c, confirm, fail, info, sym } from "../ui.ts";
@@ -72,7 +73,7 @@ export async function add(argv: string[]): Promise<void> {
   if (preset.docs) info(c.dim(`  ${preset.docs}`));
   info("");
   info(c.bold(CONFIG_FILE));
-  info(diff(prevToml, nextToml));
+  info(formatDiff(prevToml, nextToml));
 
   const changes = await plan(root, parsed.data);
   if (changes.length) {
@@ -98,19 +99,3 @@ export async function add(argv: string[]): Promise<void> {
   info(`  next: ${c.bold("cloud apply")}`);
 }
 
-function diff(prev: string, next: string): string {
-  const a = prev.split("\n");
-  const b = next.split("\n");
-  let s = 0;
-  while (s < a.length && s < b.length && a[s] === b[s]) s++;
-  let ea = a.length - 1;
-  let eb = b.length - 1;
-  while (ea >= s && eb >= s && a[ea] === b[eb]) {
-    ea--;
-    eb--;
-  }
-  return [
-    ...a.slice(s, ea + 1).map((l) => c.red(`  - ${l}`)),
-    ...b.slice(s, eb + 1).map((l) => c.green(`  + ${l}`)),
-  ].join("\n");
-}

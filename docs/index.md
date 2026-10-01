@@ -12,6 +12,8 @@ internet ──▶ :25565 ──▶ velocity ──┬──▶ lobby-1
 `cloud.toml` describes the network you want. `cloud apply` renders the Docker
 artifacts and makes reality match. That is the whole model.
 
+<video src="assets/demos/apply.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud apply --dry-run, then cloud apply"></video>
+
 ```toml
 [network]
 name       = "mynetwork"

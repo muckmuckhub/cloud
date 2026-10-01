@@ -26,6 +26,8 @@ validation with a readable message.
 
 Applying the same preset twice is a no-op rather than a duplicated plugin list.
 
+<video src="assets/demos/add.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud add, then cloud add viaversion"></video>
+
 ## What ships
 
 | Preset | What it does |

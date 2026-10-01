@@ -9,6 +9,7 @@ import {
   memoryBudget,
   memoryWarning,
   plan,
+  recreatedAtOnce,
   renderDiff,
   seedBungeeGuard,
   seedNeoForge,
@@ -242,8 +243,7 @@ describe("renderDiff", () => {
     const prev = Array.from({ length: 200 }, (_, i) => `old ${i}`).join("\n");
     const next = Array.from({ length: 200 }, (_, i) => `new ${i}`).join("\n");
     const out = renderDiff({ path: "a.yml", next, prev });
-    expect(out).toContain("more removed");
-    expect(out).toContain("more added");
+    expect(out).toContain("more changed lines");
     expect(out.split("\n").length).toBeLessThan(100);
   });
 
@@ -379,5 +379,22 @@ describe("seedNeoForge", () => {
       expect(await seedNeoForge(dir, cfg)).toEqual([]);
       expect(existsSync(join(dir, "data", "lobby", "config"))).toBe(false);
     });
+  });
+});
+
+describe("recreatedAtOnce", () => {
+  const cfg = config({ groups: { lobby: { version: "1.21.10", fallback: true, min: 2 } } });
+  const compose = (prev: string | null) => [{ path: "docker-compose.yml", prev, next: "x" }];
+
+  test("warns when an existing compose file changes under a multi-instance group", () => {
+    expect(recreatedAtOnce(compose("old"), cfg).map((g) => g.group)).toEqual(["lobby"]);
+  });
+
+  test("stays quiet on a first apply, when nothing is running yet", () => {
+    expect(recreatedAtOnce(compose(null), cfg)).toEqual([]);
+  });
+
+  test("stays quiet when the compose file does not change", () => {
+    expect(recreatedAtOnce([], cfg)).toEqual([]);
   });
 });

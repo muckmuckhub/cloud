@@ -11,6 +11,7 @@
     "check": "bun run typecheck && bun test && bun run scripts/check-invariants.ts && bun run scripts/check-docs.ts",
     "examples": "bun run scripts/render-examples.ts",
     "links": "bun run scripts/check-links.ts",
+    "demos": "bun run scripts/record-demos.ts",
     "docs": "mkdocs serve"
   },
   "devDependencies": {

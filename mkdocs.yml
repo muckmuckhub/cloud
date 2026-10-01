@@ -11,6 +11,14 @@
 # The toolchain is pinned in requirements-docs.txt so a new major of
 # mkdocs-material breaks the build in a bump PR, not in an unrelated one.
 
+# Pages are served as commands.html, not commands/index.html, so the site has
+# the same layout as docs/. MkDocs rewrites relative paths in Markdown links
+# but not in raw HTML, and the demo videos are <video> tags: with directory
+# URLs, assets/demos/x.mp4 resolved to /commands/assets/... and every page but
+# the home page showed an empty player. scripts/check-docs.ts resolves video
+# paths against the source layout, which is now also the site's.
+use_directory_urls: false
+
 site_name: cloud
 site_description: Run a Minecraft network from one config file.
 repo_url: https://github.com/muckmuckhub/cloud

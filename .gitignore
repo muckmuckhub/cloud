@@ -7,3 +7,6 @@ docker-compose.yml
 
 # Docs site build output.
 site/
+
+# Linux build of the CLI used by the demo recorder (bun run demos).
+demos/.bin/

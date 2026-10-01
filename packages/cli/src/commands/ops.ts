@@ -125,7 +125,14 @@ export async function logs(argv: string[]): Promise<void> {
   const root = requireRoot();
   const follow = hasFlag(argv, "-f", "--follow");
   const service = positionals(argv)[0] ?? "proxy";
-  const args = ["logs", "--tail", "200"];
+  // 200 is enough to see why something just failed. Fewer is what you want
+  // when following: two hundred lines of boot noise scroll past before the
+  // first line you are actually waiting for.
+  const tail = optionValue(argv, "--tail") ?? "200";
+  if (!/^(\d+|all)$/.test(tail)) {
+    fail(`--tail takes a number of lines or "all", e.g. \`cloud logs lobby --tail 50\``);
+  }
+  const args = ["logs", "--tail", tail];
   if (follow) args.push("-f");
   args.push(service);
   await compose(root, args, { context: contextOf(argv) });

@@ -142,11 +142,26 @@ async function manualWizard(): Promise<CloudConfig> {
       ],
       first ? 0 : 1,
     );
+    // A pooled group was offered as "can run several instances" and then
+    // always written with one — no failover, nothing for a rolling restart to
+    // cycle. Ask, and default to two: the smallest group that survives losing
+    // an instance.
+    let min = 1;
+    if (kind.startsWith("pooled")) {
+      for (;;) {
+        const n = Number(await ask(`  ${c.dim("instances")}`, "2"));
+        if (Number.isInteger(n) && n >= 1 && n <= 50) {
+          min = n;
+          break;
+        }
+        info(c.yellow("  a whole number from 1 to 50"));
+      }
+    }
     groups[gname] = {
       software: "paper",
       version: mc,
       memory,
-      min: 1,
+      min,
       fallback: first,
       static: kind.startsWith("single"),
       plugins: [],

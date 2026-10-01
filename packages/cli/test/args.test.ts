@@ -47,3 +47,10 @@ describe("positionals", () => {
     expect(positionals([])).toEqual([]);
   });
 });
+
+describe("--tail", () => {
+  test("its value is not mistaken for the server name", () => {
+    expect(positionals(["--tail", "15", "lobby-1", "-f"])).toEqual(["lobby-1"]);
+    expect(optionValue(["lobby-1", "--tail", "5"], "--tail")).toBe("5");
+  });
+});

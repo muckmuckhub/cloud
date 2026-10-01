@@ -1,0 +1,28 @@
+# The only file you edit. Everything else is generated from it.
+# Run `cloud apply` after changing anything here.
+
+[network]
+name       = "mynetwork"
+entry_port = 25565
+motd       = "Survival & Friends"
+forwarding = "modern"
+online     = true
+
+[proxy]
+software = "velocity"
+version  = "3.5.1"
+memory   = "512m"
+
+[groups.lobby]
+software = "paper"
+version  = "1.21.10"
+memory   = "1G"
+min      = 2
+fallback = true              # players land here
+
+[groups.survival]
+software = "paper"
+version  = "1.21.10"
+memory   = "1G"
+min      = 1
+static   = true              # keeps its world across restarts

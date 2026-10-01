@@ -17,6 +17,8 @@ same command.
 
 ### `cloud init`
 
+<video src="assets/demos/init.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud init --manual"></video>
+
 Creates `cloud.toml` in the current directory. Conversational if an AI provider
 is configured, prompts otherwise.
 
@@ -30,6 +32,8 @@ Also creates `templates/` and a `.gitignore` covering secrets, worlds and
 generated files. Refuses to run if `cloud.toml` already exists.
 
 ### `cloud apply`
+
+<video src="assets/demos/apply.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud apply --dry-run, then cloud apply"></video>
 
 Renders the generated files, shows a diff, asks, then reconciles with
 `docker compose up -d --remove-orphans`.
@@ -47,7 +51,14 @@ cloud apply --rotate-secret      # new forwarding secret, then restart
 
 `apply` is convergent: running it twice changes nothing the second time.
 
+A `cloud.toml` that cannot work is refused before anything starts, with
+every problem listed and what to do about it:
+
+<video src="assets/demos/validate.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud apply rejecting an invalid cloud.toml"></video>
+
 ### `cloud add [preset]`
+
+<video src="assets/demos/add.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud add, then cloud add viaversion"></video>
 
 With no argument, lists the available presets. With one, merges it into
 `cloud.toml`, shows the diff, and waits for confirmation.
@@ -62,6 +73,8 @@ See [Presets](presets.md).
 ## Operating
 
 ### `cloud status`
+
+<video src="assets/demos/status.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud status and cloud status --json"></video>
 
 What is running, how many players are on it, and what should be running but
 isn't.
@@ -117,16 +130,21 @@ for the proxy. `health` and `players` are `null` when unknown.
 cloud status --json | jq '[.services[].players.online // 0] | add'
 ```
 
-### `cloud logs [server] [-f]`
+### `cloud logs [server] [-f] [--tail N]`
 
-Tails the last 200 lines. Defaults to the proxy.
+<video src="assets/demos/logs.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud logs, then cloud logs -f"></video>
+
+Shows the last 200 lines, or `--tail N`. Defaults to the proxy.
 
 ```sh
 cloud logs                       # the proxy
-cloud logs lobby-1 -f            # follow one backend
+cloud logs lobby-1 --tail 50     # the last 50 lines of one backend
+cloud logs lobby-1 -f --tail 5   # follow it, starting from the last 5
 ```
 
 ### `cloud exec <server> "<command>"`
+
+<video src="assets/demos/exec.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud exec running console commands"></video>
 
 Runs a Minecraft console command over RCON.
 
@@ -136,6 +154,8 @@ cloud exec survival "save-all"
 ```
 
 ### `cloud restart [server]`
+
+<video src="assets/demos/restart.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud restart lobby --rolling"></video>
 
 ```sh
 cloud restart                    # everything
@@ -151,6 +171,8 @@ Use `cloud apply` for a change to `cloud.toml` — a plain restart reuses the
 existing container definition, so a config change would not take effect.
 
 ### `cloud down`
+
+<video src="assets/demos/down.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud down, and cloud down --volumes asking first"></video>
 
 ```sh
 cloud down                       # stop everything, keep all data

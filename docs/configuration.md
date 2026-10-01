@@ -208,6 +208,8 @@ not discarded.
 Validation failures print every problem with its path and exit without touching
 Docker:
 
+<video src="assets/demos/validate.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud apply rejecting an invalid cloud.toml"></video>
+
 ```
 error cloud.toml is invalid:
   groups: exactly one group must set fallback = true (players need somewhere to land)

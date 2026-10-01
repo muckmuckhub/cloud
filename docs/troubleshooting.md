@@ -4,9 +4,12 @@ Start here:
 
 ```sh
 cloud status                 # what is running, and what should be
-cloud logs <server>          # the last 200 lines
+cloud logs <server>          # the last 200 lines; --tail N for fewer
+cloud logs <server> -f       # follow it while you reproduce the problem
 cloud explain <server>       # if you have an AI provider configured
 ```
+
+<video src="assets/demos/logs.mp4" controls muted playsinline preload="metadata" width="100%" aria-label="cloud logs --tail, then cloud logs -f"></video>
 
 ## Players cannot join
 
@@ -106,7 +109,7 @@ if the cap is derived from it, because the headroom stays the same size.
 ### `Unable to connect you to lobby`
 
 The backend is still starting. Paper's first boot generates a world and takes a
-minute or more. `cloud logs lobby -f`.
+minute or more. `cloud logs lobby-1 -f`.
 
 ## Docker problems
 

@@ -67,6 +67,13 @@ for (const page of onDisk) {
     if (!existsSync(resolved)) broken.push(target);
   }
   check(`${page} links resolve`, broken.length === 0, broken.join(", "));
+
+  // The demo videos are plain <video> tags, which the link pattern above does
+  // not see. A renamed recording would leave an empty player on the site.
+  const missing = [...body.matchAll(/<video[^>]*\ssrc="([^"]+)"/g)]
+    .map(([, src]) => src)
+    .filter((src) => !existsSync(normalize(join(DOCS, dirname(page), src))));
+  check(`${page} videos exist`, missing.length === 0, missing.join(", "));
 }
 
 console.log("");

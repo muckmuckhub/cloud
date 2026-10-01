@@ -46,11 +46,35 @@ export async function loadConfig(root: string): Promise<CloudConfig> {
   const result = CloudConfigSchema.safeParse(raw);
   if (!result.success) {
     const issues = result.error.issues
-      .map((i) => `  ${i.path.join(".") || "(root)"}: ${i.message}`)
+      .map((i) => wrapIssue(`${i.path.join(".") || "(root)"}: ${i.message}`))
       .join("\n");
     throw new ConfigError(`${CONFIG_FILE} is invalid:\n${issues}`);
   }
   return result.data;
+}
+
+/**
+ * One validation problem, word-wrapped with a hanging indent.
+ *
+ * The messages are written to say what to do next, so they run long — and
+ * printed as one line, the terminal broke them mid-word ("bungeegua" / "rd"),
+ * right where the advice was. Wraps at the terminal's width, or 100 columns
+ * when there is none (piped output, CI logs).
+ */
+export function wrapIssue(text: string, columns = process.stdout.columns || 100): string {
+  const width = Math.max(40, columns - 1);
+  const lines: string[] = [];
+  let line = "  ";
+  for (const word of text.split(" ")) {
+    if (line.trim() && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = "    " + word;
+    } else {
+      line += (line.trim() ? " " : "") + word;
+    }
+  }
+  lines.push(line);
+  return lines.join("\n");
 }
 
 export async function saveConfig(root: string, text: string): Promise<void> {

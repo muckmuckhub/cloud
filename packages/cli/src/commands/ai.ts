@@ -10,6 +10,7 @@ import { resolveProvider, NoProviderError } from "../ai/provider.ts";
 import { fetchPaperVersions } from "../versions.ts";
 import { c, confirm, fail, info, sym } from "../ui.ts";
 import { hasFlag, optionValue, positionals } from "../args.ts";
+import { formatDiff } from "../diff.ts";
 
 /**
  * `cloud ask` never applies anything. It proposes a new cloud.toml, shows the
@@ -79,7 +80,7 @@ export async function askCmd(argv: string[]): Promise<void> {
   }
 
   info(c.bold(`${CONFIG_FILE}`));
-  info(diffText(prevToml, nextToml));
+  info(formatDiff(prevToml, nextToml));
 
   const changes = await plan(root, parsed.data);
   if (changes.length) {
@@ -143,19 +144,3 @@ export async function explainCmd(argv: string[]): Promise<void> {
   info(res.text ?? c.dim("(no response)"));
 }
 
-function diffText(prev: string, next: string): string {
-  const a = prev.split("\n");
-  const b = next.split("\n");
-  let s = 0;
-  while (s < a.length && s < b.length && a[s] === b[s]) s++;
-  let ea = a.length - 1;
-  let eb = b.length - 1;
-  while (ea >= s && eb >= s && a[ea] === b[eb]) {
-    ea--;
-    eb--;
-  }
-  return [
-    ...a.slice(s, ea + 1).map((l) => c.red(`  - ${l}`)),
-    ...b.slice(s, eb + 1).map((l) => c.green(`  + ${l}`)),
-  ].join("\n");
-}
