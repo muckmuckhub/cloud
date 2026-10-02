@@ -1,7 +1,8 @@
-import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
+import { readFile, readdir, writeFile, mkdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import {
+  hostDirOwners,
   hostDirs,
   hostPluginDir,
   instanceNames,
@@ -17,6 +18,7 @@ import { proxyConfigFile } from "./render/forwarding.ts";
 import { containerLimitMiB, memoryMiB, runsPlugins } from "@cloud/schema";
 import type { CloudConfig } from "./types.ts";
 import { c } from "./ui.ts";
+import { ownershipMatters, ownTree, processUid } from "./platform.ts";
 import { formatDiff } from "./diff.ts";
 
 export interface FileChange {
@@ -194,6 +196,38 @@ export async function createHostDirs(
   for (const dir of hostDirs(cfg)) {
     await mkdir(join(root, dir), { recursive: true });
   }
+}
+
+/**
+ * Hands every host directory a container writes to over to the user the
+ * server runs as. Runs after everything apply writes there — directories,
+ * seeded configs, the proxy's BungeeGuard token.
+ *
+ * Run as root on Linux, `cloud apply` created all of it as root:root, and the
+ * servers (uid 1000) could not write their own plugins directory: the image
+ * repairs ownership only when /data *itself* belongs to someone else, which a
+ * named volume never does. The servers crash-looped on AccessDeniedException.
+ * As root, this repairs it — existing installations included. As anyone else
+ * it cannot, so it returns the directories that are wrong, for a warning that
+ * says how to fix them.
+ */
+export async function fixOwnership(
+  root: string,
+  cfg: CloudConfig,
+): Promise<{ dir: string; uid: number; gid: number }[]> {
+  const me = processUid();
+  if (!ownershipMatters || me === null) return [];
+  const wrong: { dir: string; uid: number; gid: number }[] = [];
+  for (const owner of hostDirOwners(cfg)) {
+    const path = join(root, owner.dir);
+    if (me === 0) {
+      await ownTree(path, owner.uid, owner.gid);
+      continue;
+    }
+    const st = await stat(path).catch(() => null);
+    if (st && st.uid !== owner.uid) wrong.push(owner);
+  }
+  return wrong;
 }
 
 /**

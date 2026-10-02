@@ -31,9 +31,17 @@ and a handful of YAML files is not. So the files you want to edit are always
 reachable, and the directory that would make your server stutter stays in the
 volume.
 
-`cloud apply` creates these directories before starting anything, so they
-belong to you. Left to Docker they would be created as root, and you would need
-`sudo` to edit your own plugin configs.
+`cloud apply` creates these directories before starting anything. Left to
+Docker they would be created as root, and you would need `sudo` to edit your
+own plugin configs.
+
+On Linux they also have to belong to the user the servers run as — uid and
+gid 1000, unless you set `UID` and `GID` in a server's `env` — or the servers
+cannot install plugins or save files. If your own uid is 1000, as on most
+single-user machines, that is you and nothing more happens. `sudo cloud apply`
+hands the directories to the servers' user itself. As any other user, `apply`
+warns and prints the `chown` that fixes it. Docker Desktop on Windows and macOS
+translates ownership on its own.
 
 After editing, restart the server so it re-reads them:
 

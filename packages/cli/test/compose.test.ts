@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parse as parseYaml } from "yaml";
 import {
   hangarUrl,
+  hostDirOwners,
   hostDirs,
   hostPluginDir,
   instanceNames,
@@ -737,5 +738,46 @@ describe("neoforge servers", () => {
     const env = withNeo({ forwarding: "bungeeguard" }).environment ?? {};
     expect(env.PLUGINS).toBeUndefined();
     expect(env.MODS).toBeUndefined();
+  });
+});
+
+describe("hostDirOwners", () => {
+  test("every directory a server writes to belongs to uid/gid 1000 by default", () => {
+    const owners = hostDirOwners(
+      config({
+        groups: {
+          lobby: { version: "1.21.10", fallback: true, min: 2 },
+          survival: { version: "1.21.10", static: true },
+          modded: { software: "fabric", version: "1.21.10" },
+        },
+      }),
+    );
+    expect(owners).toEqual([
+      { dir: "data/proxy/plugins", uid: 1000, gid: 1000 },
+      { dir: "data/lobby-1/plugins", uid: 1000, gid: 1000 },
+      { dir: "data/lobby-2/plugins", uid: 1000, gid: 1000 },
+      // static under bind storage: its whole /data is the host directory
+      { dir: "data/survival", uid: 1000, gid: 1000 },
+      // mods keep their settings in config/
+      { dir: "data/modded/config", uid: 1000, gid: 1000 },
+    ]);
+  });
+
+  test("UID and GID in a service's env change whom it runs as, and so the owner", () => {
+    const owners = hostDirOwners(
+      config({
+        proxy: { env: { UID: "1001", GID: "1001" } },
+        groups: { lobby: { version: "1.21.10", fallback: true, env: { UID: "2000", GID: "3000" } } },
+      }),
+    );
+    expect(owners[0]).toEqual({ dir: "data/proxy/plugins", uid: 1001, gid: 1001 });
+    expect(owners[1]).toEqual({ dir: "data/lobby/plugins", uid: 2000, gid: 3000 });
+  });
+
+  test("templates are not included: they are mounted read-only", () => {
+    const owners = hostDirOwners(
+      config({ groups: { lobby: { version: "1.21.10", fallback: true, template: "hub" } } }),
+    );
+    expect(owners.some((o) => o.dir.startsWith("templates/"))).toBe(false);
   });
 });

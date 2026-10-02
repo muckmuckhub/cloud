@@ -10,8 +10,5 @@ if [ -f "$dir/docker-compose.yml" ]; then
 fi
 rm -rf "$dir" && mkdir -p "$dir"
 if [ -n "$1" ]; then cp "/repo/demos/fixtures/$1.toml" "$dir/cloud.toml"; fi
-# The recorder runs as root, so directories it creates are root-owned and the
-# servers (uid 1000) could not write into them. On a real host they belong to
-# whoever runs `cloud apply`. survival is static: its whole /data is here.
-mkdir -p "$dir"/data/{proxy,lobby-1,lobby-2}/plugins "$dir"/data/survival
-chmod -R 777 "$dir/data"
+# Nothing to prepare for ownership: the recorder runs as root, and `cloud
+# apply` as root hands the servers' directories to the uid they run as.

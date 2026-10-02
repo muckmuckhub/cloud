@@ -67,8 +67,8 @@ over and over may not.
 - Projects live under `/tmp/cloud-demos`, mounted at that same path. Compose
   hands the daemon absolute bind-mount paths from inside the recorder, which
   resolve only if the daemon sees the directory at the same place.
-- The recorder runs as root, so `fresh.sh` creates the servers' directories
-  itself with open permissions. On a real host they belong to whoever runs
-  `cloud apply`.
+- The recorder runs as root, like `sudo cloud apply` on a Linux server — so
+  the recordings also exercise `apply` handing the servers' directories to
+  the uid they run as.
 - Paths in a tape are relative to the repository root: VHS reads a leading
   `/` as the start of a regular expression.

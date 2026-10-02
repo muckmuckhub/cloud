@@ -37,6 +37,43 @@ export const sym = unicodeOk
   : { ok: "+", warn: "!", arrow: ">", bullet: "-" };
 
 /**
+ * Whether host file ownership reaches the containers. On Linux a bind mount
+ * shows the container the host's uid and gid as they are, so a directory
+ * `cloud apply` creates as root is root's inside the container too — and the
+ * server, which runs as uid 1000, cannot write to it. Docker Desktop on
+ * Windows and macOS translates ownership itself, and there is nothing to fix.
+ * WSL is Linux here: its Docker sees ext4 ownership as it is.
+ */
+export const ownershipMatters = process.platform === "linux";
+
+/** The uid this process runs as. Null where there is none (Windows). */
+export function processUid(): number | null {
+  return typeof process.getuid === "function" ? process.getuid() : null;
+}
+
+/**
+ * Gives a directory tree to uid:gid, changing only entries that are wrong —
+ * so on a large world it costs a stat per file, not a write. Symlinks are
+ * neither followed nor changed: a link in a server directory pointing
+ * elsewhere must not hand that elsewhere to the server.
+ */
+export async function ownTree(path: string, uid: number, gid: number): Promise<void> {
+  const { lstat, lchown, readdir } = await import("node:fs/promises");
+  let st;
+  try {
+    st = await lstat(path);
+  } catch {
+    return; // not there (yet): nothing to own
+  }
+  if (st.isSymbolicLink()) return;
+  if (st.uid !== uid || st.gid !== gid) await lchown(path, uid, gid);
+  if (!st.isDirectory()) return;
+  for (const entry of await readdir(path)) {
+    await ownTree(`${path}/${entry}`, uid, gid);
+  }
+}
+
+/**
  * Node's fs.chmod on Windows only toggles the read-only bit — it cannot make a
  * file owner-only. The forwarding secret would otherwise be readable by every
  * account on the machine, so we fall back to icacls, which is the real ACL

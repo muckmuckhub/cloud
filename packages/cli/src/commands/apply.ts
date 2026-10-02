@@ -2,6 +2,7 @@ import { loadConfig, requireRoot } from "../config.ts";
 import {
   createHostDirs,
   emptyTemplates,
+  fixOwnership,
   memoryBudget,
   memoryWarning,
   plan,
@@ -138,6 +139,19 @@ export async function apply(argv: string[]): Promise<void> {
     if (secret && cfg.proxy.software !== "velocity") {
       await writeProxyToken(root, secret);
     }
+  }
+
+  // Last, after everything written into the servers' directories above.
+  const wrongOwner = await fixOwnership(root, cfg);
+  if (wrongOwner.length) {
+    const { uid, gid } = wrongOwner[0];
+    warn(
+      `the servers run as uid ${uid}, but cannot write to directories owned by you:\n` +
+        wrongOwner.map((o) => `    ${o.dir}`).join("\n") +
+        `\n  They will fail to install plugins and save files. Either hand them over:\n` +
+        `    sudo chown -R ${uid}:${gid} ${wrongOwner.map((o) => o.dir).join(" ")}\n` +
+        `  or run \`sudo cloud apply\`, which does it for you.`,
+    );
   }
 
   // After createHostDirs, so a template directory that did not exist has just

@@ -217,6 +217,31 @@ export function hostDirs(cfg: CloudConfig): string[] {
   return dirs;
 }
 
+/**
+ * Which host directories each container writes to, and as whom.
+ *
+ * The images run their server as uid/gid 1000 unless `UID`/`GID` in the
+ * service's environment say otherwise, and a server must be able to write
+ * where its files are bind-mounted. Templates are absent on purpose: they are
+ * mounted read-only and only ever read.
+ */
+export function hostDirOwners(cfg: CloudConfig): { dir: string; uid: number; gid: number }[] {
+  const id = (env: Record<string, string>) => ({
+    uid: Number(env.UID ?? 1000),
+    gid: Number(env.GID ?? 1000),
+  });
+  const out = [{ dir: hostPluginDir("proxy"), ...id(cfg.proxy.env) }];
+  for (const [group, g] of Object.entries(cfg.groups)) {
+    for (const instance of instanceNames(group, g.min)) {
+      const dir = bindsWholeData(cfg, g)
+        ? `data/${instance}`
+        : serverFilesDir(instance, g.software).host;
+      out.push({ dir, ...id(g.env) });
+    }
+  }
+  return out;
+}
+
 /** True when the whole /data directory is a bind mount, not just plugins. */
 function bindsWholeData(cfg: CloudConfig, g: CloudConfig["groups"][string]): boolean {
   return g.static && cfg.network.storage === "bind";

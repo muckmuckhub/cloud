@@ -87,6 +87,22 @@ curl -sIL -o /dev/null -w "%{http_code} %{content_type}\n" "<the url>"
 
 You want `application/java-archive`, not `text/html`.
 
+### `AccessDeniedException` or `Permission denied` under `/data`
+
+Linux only. The server runs as uid 1000 and cannot write to a directory owned
+by someone else — typically `data/<server>/plugins` created by `cloud apply`
+run as root with a version before 0.2.1. The log shows it while installing
+plugins:
+
+```
+java.nio.file.AccessDeniedException: /data/plugins/ViaVersion-5.11.0.jar
+```
+
+Run `sudo cloud apply` once: it hands every server directory to the user the
+server runs as, existing files included, and the crashing servers recover on
+their next restart. As a regular user whose uid is not 1000, `cloud apply`
+prints the exact `chown` instead. See [Server files](server-files.md).
+
 ### It restarts with exit code 137
 
 The container hit its memory cap and the kernel killed it. The server log just

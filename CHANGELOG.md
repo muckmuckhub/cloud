@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Servers could not write their own files on Linux when `cloud apply` ran
+  as root.** The directories it created belonged to root, while the servers
+  run as uid 1000: plugins failed to install with `AccessDeniedException` and
+  the servers crash-looped. `apply` now hands every server directory to the
+  user the server runs as (1000, or `UID`/`GID` from its `env`), which also
+  repairs existing installations. Run as a regular user with another uid, it
+  warns and prints the `chown` that fixes it.
+
 ## 0.2.0
 
 ### Upgrading from 0.1.0
