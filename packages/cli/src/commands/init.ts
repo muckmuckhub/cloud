@@ -1,12 +1,16 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, writeFile } from "node:fs/promises";
+import { parse as parseToml } from "smol-toml";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { CloudConfigSchema, type CloudConfig } from "@cloud/schema";
+import { CloudConfigSchema, isMcVersion, type CloudConfig } from "@cloud/schema";
 import { renderCloudToml } from "../render/config.ts";
 import { resolveProvider } from "../ai/provider.ts";
 import { runWizard } from "../ai/wizard.ts";
 import { latestVersion } from "../versions.ts";
-import { ask, c, choose, confirm, fail, info, sym } from "../ui.ts";
+import { ask, c, choose, confirm, fail, info, sym, warn } from "../ui.ts";
+import { BlueprintError, freePort, loadBlueprint, networkName, type Blueprint } from "../blueprint.ts";
+import { editCloudToml } from "../edit.ts";
+import { withVersion } from "../version.ts";
 import { CONFIG_FILE } from "../config.ts";
 import { isWindows, isOnWindowsDrive, platformNotes } from "../platform.ts";
 import { hasFlag, optionValue } from "../args.ts";
@@ -19,11 +23,20 @@ export async function init(argv: string[]): Promise<void> {
 
   const manual = hasFlag(argv, "--manual");
   const promptArg = optionValue(argv, "--prompt");
+  const from = optionValue(argv, "--from");
+  const versionArg = optionValue(argv, "--version");
+  if (!from && (versionArg || optionValue(argv, "--name") || optionValue(argv, "--port"))) {
+    fail("--version, --name and --port go with --from <blueprint>.");
+  }
 
   let cfg: CloudConfig;
-  const provider = manual ? null : await resolveProvider();
+  let toml: string | null = null;
+  let blueprint: Blueprint | null = null;
+  const provider = manual || from ? null : await resolveProvider();
 
-  if (provider) {
+  if (from) {
+    ({ cfg, toml, blueprint } = await fromBlueprint(from, argv, root));
+  } else if (provider) {
     const prompt =
       promptArg ??
       (await ask(
@@ -49,7 +62,7 @@ export async function init(argv: string[]): Promise<void> {
   // is slow enough to stutter a Minecraft world. Default to a named volume
   // there, but record the choice in cloud.toml so the config still fully
   // determines the output.
-  if ((isWindows || isOnWindowsDrive(root)) && cfg.network.storage === "bind") {
+  if (!blueprint && preferVolume(root, cfg)) {
     cfg = { ...cfg, network: { ...cfg.network, storage: "volume" } };
   }
 
@@ -59,7 +72,7 @@ export async function init(argv: string[]): Promise<void> {
     for (const n of notes) info(c.dim(`  ${n}`));
   }
 
-  const toml = renderCloudToml(cfg);
+  toml ??= renderCloudToml(cfg);
   info("");
   info(c.bold(`${CONFIG_FILE}`));
   info(toml.split("\n").map((l) => c.dim("  ") + l).join("\n"));
@@ -71,6 +84,11 @@ export async function init(argv: string[]): Promise<void> {
 
   await writeFile(join(root, CONFIG_FILE), toml, "utf8");
   await mkdir(join(root, "templates"), { recursive: true });
+  if (blueprint?.templatesDir) {
+    // The blueprint's templates are part of what makes it that setup.
+    await cp(blueprint.templatesDir, join(root, "templates"), { recursive: true });
+    info(`${c.green(sym.ok)} copied templates/ from ${blueprint.source}`);
+  }
   await writeFile(
     join(root, ".gitignore"),
     [
@@ -195,4 +213,73 @@ async function manualWizard(): Promise<CloudConfig> {
     );
   }
   return parsed.data;
+}
+
+/**
+ * Bind mounts cross the host<->VM filesystem bridge on Docker Desktop, which
+ * is slow enough to stutter a Minecraft world. Default to a named volume
+ * there, but record the choice in cloud.toml so the config still fully
+ * determines the output.
+ */
+function preferVolume(root: string, cfg: CloudConfig): boolean {
+  return (isWindows || isOnWindowsDrive(root)) && cfg.network.storage === "bind";
+}
+
+/**
+ * A new project from a blueprint: its cloud.toml with the version, a name of
+ * its own and a free port. Edited from the blueprint's text rather than
+ * rendered fresh, so the comments that explain the setup come along.
+ */
+async function fromBlueprint(
+  from: string,
+  argv: string[],
+  root: string,
+): Promise<{ cfg: CloudConfig; toml: string; blueprint: Blueprint }> {
+  const versionArg = optionValue(argv, "--version");
+  const nameArg = optionValue(argv, "--name");
+  const portArg = optionValue(argv, "--port");
+  if (versionArg && !isMcVersion(versionArg)) {
+    fail(`--version takes a Minecraft version, e.g. 1.21.10 or 26.2 — not "${versionArg}".`);
+  }
+
+  let blueprint: Blueprint;
+  try {
+    blueprint = await loadBlueprint(from);
+  } catch (err) {
+    if (err instanceof BlueprintError) fail(err.message);
+    throw err;
+  }
+  let base: CloudConfig;
+  try {
+    base = CloudConfigSchema.parse(parseToml(blueprint.text));
+  } catch (err) {
+    fail(`${from} is not a valid cloud.toml:\n  ${(err as Error).message.split("\n")[0]}`);
+  }
+
+  const next = versionArg ? withVersion(base, versionArg) : structuredClone(base);
+  next.network.name = nameArg ?? networkName(base.network.name, versionArg);
+  next.network.entry_port = portArg ? Number(portArg) : await freePort(base.network.entry_port);
+  if (preferVolume(root, next)) next.network.storage = "volume";
+
+  const parsed = CloudConfigSchema.safeParse(next);
+  if (!parsed.success) {
+    fail(
+      `that blueprint does not work${versionArg ? ` with ${versionArg}` : ""}:\n` +
+        parsed.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n"),
+    );
+  }
+  const cfg = parsed.data;
+
+  info(`${c.bold("from")} ${blueprint.source}`);
+  info(c.dim(`  name ${cfg.network.name} · port ${cfg.network.entry_port}` +
+    (versionArg ? ` · every group on ${versionArg}` : "")));
+  if (cfg.network.entry_port !== base.network.entry_port && !portArg) {
+    info(c.dim(`  port ${base.network.entry_port} is taken here, so this network gets ${cfg.network.entry_port}`));
+  }
+
+  const edited = editCloudToml(blueprint.text, cfg);
+  if (!edited.inPlace) {
+    warn(`the blueprint is written in canonical form: ${edited.reason}.`);
+  }
+  return { cfg, toml: edited.text, blueprint };
 }

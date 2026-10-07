@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- **`cloud apply --version 26.2`** switches every group to another Minecraft
+  version, written into `cloud.toml` as a diff you confirm. A downgrade of a
+  network that has run is refused — Minecraft cannot open newer worlds —
+  unless you add `--recreate`.
+- **`cloud apply --recreate`** deletes every world and builds the network
+  again. Plugin and mod configuration is kept.
+- **`cloud init --from <blueprint> --version 26.2`** creates a second network
+  from any `cloud.toml` — a file, a project directory or a URL — with its own
+  name and a free port, so both run side by side.
+- **`cloud apply` waits until players can join**, showing each server's
+  progress, and ends with the address to join. `--no-wait` returns early.
+
 ## 0.2.1
 
 ### Fixed

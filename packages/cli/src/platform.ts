@@ -33,8 +33,8 @@ export const unicodeOk =
   process.env.ConEmuANSI === "ON";
 
 export const sym = unicodeOk
-  ? { ok: "✓", warn: "!", arrow: "›", bullet: "·" }
-  : { ok: "+", warn: "!", arrow: ">", bullet: "-" };
+  ? { ok: "✓", fail: "✗", warn: "!", arrow: "›", bullet: "·" }
+  : { ok: "+", fail: "x", warn: "!", arrow: ">", bullet: "-" };
 
 /**
  * Whether host file ownership reaches the containers. On Linux a bind mount

@@ -8,7 +8,15 @@
  */
 
 /** Flags that consume the token after them, which is therefore not a value. */
-const VALUE_FLAGS = new Set(["--context", "--prompt", "--tail"]);
+const VALUE_FLAGS = new Set([
+  "--context",
+  "--prompt",
+  "--tail",
+  "--from",
+  "--version",
+  "--name",
+  "--port",
+]);
 
 export function optionValue(argv: string[], flag: string): string | undefined {
   const i = argv.indexOf(flag);

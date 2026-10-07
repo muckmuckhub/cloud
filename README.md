@@ -89,6 +89,8 @@ not a broken deploy.
 | `cloud init` | Create `cloud.toml`. `--manual` skips the AI wizard. |
 | `cloud apply` | Render, diff, confirm, reconcile. `--dry-run` stops at the diff. |
 | `cloud apply --rolling` | Update multi-instance groups one instance at a time. |
+| `cloud apply --version 26.2` | Switch every group to another Minecraft version. `--recreate` starts over with new worlds. |
+| `cloud init --from <blueprint>` | A new network from any `cloud.toml`, beside the ones you have. |
 | `cloud apply --rotate-secret` | New forwarding secret, then restart every backend. |
 | `cloud status [--json]` | What is running, player counts, and what should be but isn't. |
 | `cloud logs [server] [-f] [--tail N]` | Tail logs. Defaults to the proxy and 200 lines. |

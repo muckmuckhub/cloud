@@ -209,6 +209,16 @@ function versionKey(v: string): number {
   return major * 1_000_000 + minor * 1_000 + patch;
 }
 
+/** Orders Minecraft versions: negative when a is older than b. 26.1 > 1.21.10. */
+export function compareMcVersions(a: string, b: string): number {
+  return versionKey(a) - versionKey(b);
+}
+
+/** True for a string shaped like a Minecraft version, e.g. 1.21.10 or 26.2. */
+export function isMcVersion(v: string): boolean {
+  return /^\d+\.\d+(\.\d+)?$/.test(v);
+}
+
 export function fabricProxyLiteFor(mcVersion: string): string | null {
   const v = versionKey(mcVersion);
   const hit = FABRIC_PROXY_LITE.find(({ from, to }) => {

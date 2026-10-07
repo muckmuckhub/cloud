@@ -55,6 +55,7 @@ nav:
   - Commands: commands.md
   - Guides:
       - Scaling and updates: scaling.md
+      - Versions and blueprints: versions.md
       - Server files: server-files.md
       - Forwarding: forwarding.md
       - Proxies: proxies.md

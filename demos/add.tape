@@ -51,5 +51,5 @@ Hide
 Wait+Screen@300s /lobby-2 .*ready in/
 Show
 Sleep 3s
-Wait+Screen@120s /network is up/
+Wait+Screen@600s /ready in .* join/
 Sleep 9s

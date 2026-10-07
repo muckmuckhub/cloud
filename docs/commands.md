@@ -26,7 +26,12 @@ is configured, prompts otherwise.
 cloud init
 cloud init --manual              # skip the AI wizard even if a provider exists
 cloud init --prompt "velocity proxy, 3 paper lobbies, one survival"
+cloud init --from ../mynetwork --version 26.2   # a second network from a blueprint
 ```
+
+`--from` takes any `cloud.toml` — a file, a project directory, or a URL — and
+gives the new network its own name and a free port, so it runs beside the
+others. See [Versions and blueprints](versions.md).
 
 Without a provider it asks for the network name, port, MOTD and Minecraft
 version, then each server: its memory, whether it is *pooled* (lobbies,
@@ -50,7 +55,15 @@ cloud apply
 cloud apply --dry-run            # stop at the diff, write nothing
 cloud apply --rolling            # cycle multi-instance groups one at a time
 cloud apply --rotate-secret      # new forwarding secret, then restart
+cloud apply --version 26.2       # switch every group, written into cloud.toml
+cloud apply --recreate           # delete every world, build again (asks)
+cloud apply --no-wait            # return once the containers have started
 ```
+
+`apply` waits until players can actually join — the proxy and the fallback
+group ready — and shows each server's progress meanwhile: downloading,
+installing plugins, generating the world, ready. See
+[Versions and blueprints](versions.md) for `--version` and `--recreate`.
 
 `--dry-run` touches nothing at all, the secret included. See
 [Scaling](scaling.md) for `--rolling` and [Forwarding](forwarding.md) for

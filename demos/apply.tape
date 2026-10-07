@@ -38,5 +38,5 @@ Sleep 4s
 Type "y"
 Sleep 600ms
 Enter
-Wait+Screen@120s /network is up/
+Wait+Screen@600s /ready in .* join/
 Sleep 9s

@@ -17,8 +17,12 @@ ${c.dim("USAGE")}
 ${c.dim("SETUP")}
   init                 Create cloud.toml (conversational if an AI provider is set)
   init --manual        Skip the AI wizard and answer prompts yourself
-  apply                Render generated files, show the diff, reconcile
+  init --from <blueprint> [--version V]  A new network from a cloud.toml, beside the others
+  apply                Render, show the diff, reconcile, wait until players can join
   apply --dry-run      Show what would change and stop
+  apply --version V    Switch every group to Minecraft V (written into cloud.toml)
+  apply --recreate     Delete all worlds and build the network again
+  apply --no-wait      Return once the containers have started
   apply --rolling      Update multi-instance groups one instance at a time
   apply --rotate-secret  New forwarding secret, then restart everything
   add [preset]         Add a community preset. No argument lists them.

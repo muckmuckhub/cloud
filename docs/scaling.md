@@ -47,7 +47,8 @@ cloud apply --rolling
     ✓ lobby-1 ready in 17s
     ✓ lobby-2 ready in 16s
     ✓ lobby-3 ready in 18s
-+ network is up on port 25565
+
+✓ ready in 9s — join localhost:25565  (players land on lobby)
 ```
 
 Each instance is recreated on its own and must report healthy before the next

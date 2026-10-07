@@ -28,7 +28,7 @@ describe("sym", () => {
   });
 
   test("has an entry for each thing the UI draws", () => {
-    expect(Object.keys(sym).sort()).toEqual(["arrow", "bullet", "ok", "warn"]);
+    expect(Object.keys(sym).sort()).toEqual(["arrow", "bullet", "fail", "ok", "warn"]);
   });
 });
 
