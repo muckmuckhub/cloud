@@ -1,6 +1,6 @@
 {
   "name": "cloud-cli",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Run a Minecraft network from one config file. No dashboard, no daemon.",
   "license": "Apache-2.0",
   "type": "module",
